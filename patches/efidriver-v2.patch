@@ -1,0 +1,153 @@
+From 20240922-cmd-efidriver-v2-1-750b77bfca0a@trvn.ru Mon Sep 17 00:00:00 2001
+From: Nikita Travkin <nikita@trvn.ru>
+Date: Sat, 26 Oct 2024 10:24:05 +0500
+Subject: [PATCH v2] loader/efi/chainloader: Add efidriver command
+
+---
+ grub-core/loader/efi/chainloader.c | 73 +++++++++++++++++++++++++++++++-------
+ 1 file changed, 61 insertions(+), 12 deletions(-)
+
+diff --git a/grub-core/loader/efi/chainloader.c b/grub-core/loader/efi/chainloader.c
+index 869307bf3..77185e3aa 100644
+--- a/grub-core/loader/efi/chainloader.c
++++ b/grub-core/loader/efi/chainloader.c
+@@ -19,6 +19,7 @@
+ 
+ /* TODO: support load options.  */
+ 
++#include <stdbool.h>
+ #include <grub/loader.h>
+ #include <grub/file.h>
+ #include <grub/err.h>
+@@ -64,9 +65,8 @@ grub_chainloader_unload (void *context)
+ }
+ 
+ static grub_err_t
+-grub_chainloader_boot (void *context)
++start_efi_image (grub_efi_handle_t image_handle, bool driver)
+ {
+-  grub_efi_handle_t image_handle = (grub_efi_handle_t) context;
+   grub_efi_boot_services_t *b;
+   grub_efi_status_t status;
+   grub_efi_uintn_t exit_data_size;
+@@ -74,7 +74,9 @@ grub_chainloader_boot (void *context)
+ 
+   b = grub_efi_system_table->boot_services;
+   status = b->start_image (image_handle, &exit_data_size, &exit_data);
+-  if (status != GRUB_EFI_SUCCESS)
++  /* EFI_ABORTED is a normal return code for "initializing" drivers
++     which indicates that "the driver did what it wanted and unloaded" */
++  if (status != GRUB_EFI_SUCCESS && !(driver && status == GRUB_EFI_ABORTED))
+     {
+       if (exit_data)
+      {
+@@ -97,9 +99,20 @@ grub_chainloader_boot (void *context)
+   if (exit_data)
+     b->free_pool (exit_data);
+ 
++  return grub_errno;
++}
++
++static grub_err_t
++grub_chainloader_boot (void *context)
++{
++  grub_efi_handle_t image_handle = (grub_efi_handle_t) context;
++  grub_err_t ret;
++
++  ret = start_efi_image (image_handle, false);
++
+   grub_loader_unset ();
+ 
+-  return grub_errno;
++  return ret;
+ }
+ 
+ static grub_err_t
+@@ -209,8 +222,7 @@ make_file_path (grub_efi_device_path_t *dp, const char 
+ *filename)
+ }
+ 
+ static grub_err_t
+-grub_cmd_chainloader (grub_command_t cmd __attribute__ ((unused)),
+-                   int argc, char *argv[])
++load_efi_image (int argc, char *argv[], grub_efi_handle_t *image_ret)
+ {
+   grub_file_t file = 0;
+   grub_ssize_t size;
+@@ -400,8 +412,8 @@ grub_cmd_chainloader (grub_command_t cmd __attribute__ 
+ ((unused)),
+   b->free_pages (address, pages);
+   grub_free (file_path);
+ 
+-  grub_loader_set_ex (grub_chainloader_boot, grub_chainloader_unload, 
+image_handle, 0);
+-  return 0;
++  *image_ret = image_handle;
++  return GRUB_ERR_NONE;
+ 
+  fail:
+ 
+@@ -425,16 +437,53 @@ grub_cmd_chainloader (grub_command_t cmd __attribute__ 
+ ((unused)),
+   return grub_errno;
+ }
+ 
+-static grub_command_t cmd;
++static grub_err_t
++grub_cmd_chainloader (grub_command_t cmd __attribute__ ((unused)),
++                   int argc, char *argv[])
++{
++  grub_efi_handle_t image_handle = NULL;
++  grub_err_t ret;
++
++  ret = load_efi_image (argc, argv, &image_handle);
++  if (ret != GRUB_ERR_NONE)
++    return ret;
++
++  grub_loader_set_ex (grub_chainloader_boot, grub_chainloader_unload, 
+image_handle, 0);
++  return GRUB_ERR_NONE;
++}
++
++static grub_err_t
++grub_cmd_efidriver (grub_command_t cmd __attribute__ ((unused)),
++                 int argc, char *argv[])
++{
++  grub_efi_handle_t image_handle = NULL;
++  grub_err_t ret;
++
++  ret = load_efi_image (argc, argv, &image_handle);
++  if (ret != GRUB_ERR_NONE)
++    return ret;
++
++  ret = start_efi_image (image_handle, true);
++
++  grub_dl_unref (my_mod);
++
++  return ret;
++}
++
++static grub_command_t cmd_chainloader;
++static grub_command_t cmd_efidriver;
+ 
+ GRUB_MOD_INIT(chainloader)
+ {
+-  cmd = grub_register_command ("chainloader", grub_cmd_chainloader,
+-                            0, N_("Load another boot loader."));
++  cmd_chainloader = grub_register_command ("chainloader", 
++ grub_cmd_chainloader,
++                                        0, N_("Load another boot loader."));
++  cmd_efidriver = grub_register_command ("efidriver", grub_cmd_efidriver,
++                                      0, N_("Load a efi driver."));
+   my_mod = mod;
+ }
+ 
+ GRUB_MOD_FINI(chainloader)
+ {
+-  grub_unregister_command (cmd);
++  grub_unregister_command (cmd_chainloader);
++  grub_unregister_command (cmd_efidriver);
+ }
+ 
+-- 
+2.46.0
