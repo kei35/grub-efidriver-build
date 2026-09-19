@@ -8,6 +8,9 @@ jobs:
     runs-on: ubuntu-24.04
 
     steps:
+      - name: Checkout build repository
+        uses: actions/checkout@v4
+
       - name: Clone GRUB
         run: |
           git clone https://gitlab.com/gnu_grub/grub.git
