@@ -59,9 +59,8 @@ jobs:
         run: |
           cd grub
           grub-mkimage -O x86_64-efi -o grubx64.efi -p /boot/grub \
-            efidriver chainloader part_gpt part_msdos fat ext2 normal linux \
+            chainloader part_gpt part_msdos fat ext2 normal linux \
             efi_gop efi_uga
-
 
       # 8. 上傳成果
       - name: Upload artifact
