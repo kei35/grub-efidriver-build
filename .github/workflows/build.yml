@@ -24,9 +24,8 @@ jobs:
       # 3. 下載 GRUB
       - name: Clone GRUB
         run: |
-          git clone https://gitlab.com/gnu_grub/grub.git
+          git clone https://git.savannah.gnu.org/git/grub.git
           cd grub
-          # efidriver v2 patch 的 base commit
           git checkout 9c34d56c2dafcd2737db0e3e49df63bce4d8b504
 
       # 4. 顯示目前 GRUB commit
@@ -35,15 +34,12 @@ jobs:
           cd grub
           git log -1 --oneline --decorate
 
-      # 5. 套用 efidriver patch（郵件格式）
+      # 5. 套用 efidriver patch
       - name: Apply efidriver patch
         run: |
           cd grub
-          # 嘗試用 git am（郵件格式 patch）
           git am ../patches/efidriver-v2.patch || \
-          # 如果失敗，再 fallback 用 git apply（純 diff）
           git apply --ignore-space-change --ignore-whitespace ../patches/efidriver-v2.patch || \
-          # 最後保險用 patch 指令
           patch -p1 < ../patches/efidriver-v2.patch
 
       # 6. 編譯 GRUB
@@ -51,14 +47,15 @@ jobs:
         run: |
           cd grub
           ./bootstrap
-          ./configure --with-platform=efi --target=x86_64
+          ./configure --with-platform=efi --target=x86_64 --disable-werror
           make
 
-      # 7. 產生 EFI binary
+      # 7. 產生 EFI binary（指定 grub-core 為模組來源）
       - name: Build GRUB EFI
         run: |
           cd grub
           grub-mkimage -O x86_64-efi -o grubx64.efi -p /boot/grub \
+            -d grub-core \
             chainloader part_gpt part_msdos fat ext2 normal linux \
             efi_gop efi_uga
 
