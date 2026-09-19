@@ -42,22 +42,39 @@ jobs:
           git apply --ignore-space-change --ignore-whitespace ../patches/efidriver-v2.patch || \
           patch -p1 < ../patches/efidriver-v2.patch
 
-      # 6. 編譯 GRUB
-      - name: Build GRUB
+   # 6. 編譯 GRUB 並安裝到暫存目錄
+      - name: Build and install GRUB locally
         run: |
           cd grub
           ./bootstrap
-          ./configure --with-platform=efi --target=x86_64 --disable-werror
-          make
-
-      # 7. 產生 EFI binary（指定 grub-core 為模組來源）
+          ./configure --with-platform=efi --target=x86_64 --prefix=/usr --disable-werror
+          make -j$(nproc)
+          # 安裝到本 repo 下的 grub-install 目錄，避免覆寫系統
+          make install DESTDIR=$PWD/grub-install
+      
+          # 檢查模組是否已安裝
+          echo "Installed modules under:"
+          find grub-install -type f -name '*.mod' -print | sed -n '1,200p'
+          find grub-install -type f -name 'chainloader.mod' -print || echo "chainloader.mod not installed"
+      
+      # 7. 產生 EFI binary，指定模組來源為剛安裝的路徑
       - name: Build GRUB EFI
         run: |
           cd grub
+          # 指定 -d 到剛剛安裝的模組目錄（視 configure prefix 可能是 usr/lib/grub/x86_64-efi）
+          MODULE_DIR="$PWD/grub-install/usr/lib/grub/x86_64-efi"
+          if [ ! -d "$MODULE_DIR" ]; then
+            # 有些系統或 configure 會放在 usr/lib/grub/x86_64-efi 或 lib/grub/x86_64-efi
+            MODULE_DIR="$PWD/grub-install/lib/grub/x86_64-efi"
+          fi
+          echo "Using module dir: $MODULE_DIR"
+          ls -la "$MODULE_DIR" || true
+      
           grub-mkimage -O x86_64-efi -o grubx64.efi -p /boot/grub \
-            -d grub-core \
+            -d "$MODULE_DIR" \
             chainloader part_gpt part_msdos fat ext2 normal linux \
             efi_gop efi_uga
+
 
       # 8. 上傳成果
       - name: Upload artifact
