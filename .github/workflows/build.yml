@@ -103,20 +103,6 @@ jobs:
       # ------------------------------------------------------------
       # 6. 確認修改結果
       # ------------------------------------------------------------
-      - name: Verify efidriver source
-        run: |
-          cd grub
-
-          echo "===== efidriver function ====="
-
-          grep -n -A20 -B5 "grub_cmd_efidriver" \
-            grub-core/loader/efi/chainloader.c
-
-          echo
-          echo "===== efidriver command ====="
-
-          grep -n '"efidriver"' \
-            grub-core/loader/efi/chainloader.c
 
       # ------------------------------------------------------------
       # 7. 顯示 Git diff
