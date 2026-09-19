@@ -17,6 +17,13 @@ jobs:
           cd grub
           git checkout 9c34d56c2dafcd2737db0e3e49df63bce4d8b504
 
+      - name: Check patch file
+        run: |
+          echo "=== Patch file ==="
+          wc -l patches/efidriver-v2.patch
+          echo "=== Patch header ==="
+          head -20 patches/efidriver-v2.patch
+
       - name: Check patch
         run: |
           cd grub
