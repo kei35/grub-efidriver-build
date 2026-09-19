@@ -63,8 +63,7 @@ index 869307bf3..77185e3aa 100644
  }
  
  static grub_err_t
-@@ -209,8 +222,7 @@ make_file_path (grub_efi_device_path_t *dp, const char 
- *filename)
+@@ -209,8 +222,7 @@ make_file_path (grub_efi_device_path_t *dp, const char *filename)
  }
  
  static grub_err_t
