@@ -1,4 +1,4 @@
-name: Test GRUB Build
+name: Test GRUB Source
 
 on:
   workflow_dispatch:
@@ -8,11 +8,14 @@ jobs:
     runs-on: ubuntu-24.04
 
     steps:
-      - name: Test GitHub Actions
+      - name: Download GRUB source
         run: |
-          echo "================================"
-          echo "GRUB build environment is running"
-          echo "================================"
-          uname -a
-          gcc --version
-          make --version
+          git clone https://gitlab.com/gnu_grub/grub.git
+          cd grub
+          git checkout 9c34d56c2dafcd2737db0e3e49df63bce4d8b504
+
+      - name: Show GRUB version
+        run: |
+          cd grub
+          git log -1 --oneline
+          git status
