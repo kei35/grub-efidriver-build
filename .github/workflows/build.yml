@@ -34,12 +34,11 @@ jobs:
           cd grub
           git log -1 --oneline --decorate
 
-      # 5. 套用 efidriver patch
+      # 5. 套用你 repo 裡的 efidriver patch
       - name: Apply efidriver patch
         run: |
           cd grub
-          # 假設你在 repo 根目錄放了 efidriver.patch
-          git apply ../efidriver.patch
+          git apply ../patches/efidriver-v2.patch
 
       # 6. 編譯 GRUB
       - name: Build GRUB
