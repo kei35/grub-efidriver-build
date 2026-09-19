@@ -1,4 +1,4 @@
-name: Test GRUB Patch
+name: Test GRUB efidriver Patch
 
 on:
   workflow_dispatch:
@@ -8,53 +8,88 @@ jobs:
     runs-on: ubuntu-24.04
 
     steps:
+      # 1. 取得我們自己的 GitHub repository
       - name: Checkout build repository
         uses: actions/checkout@v4
 
+      # 2. 下載 GRUB 原始碼
       - name: Clone GRUB
         run: |
           git clone https://gitlab.com/gnu_grub/grub.git
           cd grub
+
+          # 使用 efidriver v2 patch 指定的 base commit
           git checkout 9c34d56c2dafcd2737db0e3e49df63bce4d8b504
 
-      - name: Repair patch
+      # 3. 確認目前 GRUB 版本
+      - name: Show GRUB commit
         run: |
-          python3 - <<'PY'
-          from pathlib import Path
+          cd grub
 
-          p = Path("patches/efidriver-v2.patch")
-          s = p.read_text()
+          echo "===== GRUB commit ====="
+          git log -1 --oneline --decorate
 
-          fixes = [
-              (
-                  "@@ -209,8 +222,7 @@ make_file_path (grub_efi_device_path_t *dp, const char \n *filename)",
-                  "@@ -209,8 +222,7 @@ make_file_path (grub_efi_device_path_t *dp, const char *filename)"
-              ),
-              (
-                  "@@ -400,8 +412,8 @@ grub_cmd_chainloader (grub_command_t cmd __attribute__ \n ((unused)),",
-                  "@@ -400,8 +412,8 @@ grub_cmd_chainloader (grub_command_t cmd __attribute__ ((unused)),"
-              ),
-              (
-                  "-  grub_loader_set_ex (grub_chainloader_boot, grub_chainloader_unload, \n-image_handle, 0);",
-                  "-  grub_loader_set_ex (grub_chainloader_boot, grub_chainloader_unload, image_handle, 0);"
-              ),
-              (
-                  "+  grub_loader_set_ex (grub_chainloader_boot, grub_chainloader_unload, \n+image_handle, 0);",
-                  "+  grub_loader_set_ex (grub_chainloader_boot, grub_chainloader_unload, image_handle, 0);"
-              ),
-              (
-                  "+  cmd_chainloader = grub_register_command (\"chainloader\", \n+ grub_cmd_chainloader,",
-                  "+  cmd_chainloader = grub_register_command (\"chainloader\", grub_cmd_chainloader,"
-              ),
-          ]
+          echo
+          echo "===== GRUB status ====="
+          git status
 
-          for old, new in fixes:
-              s = s.replace(old, new)
+      # 4. 顯示 patch 要修改的位置
+      #    這一步只是除錯，不會修改任何檔案
+      - name: Show chainloader source
+        run: |
+          cd grub
 
-          p.write_text(s)
-          PY
+          echo "===== chainloader.c lines 55-90 ====="
+          nl -ba grub-core/loader/efi/chainloader.c | sed -n '55,90p'
 
+      # 5. 顯示 patch 開頭
+      - name: Show patch
+        run: |
+          echo "===== efidriver patch ====="
+          sed -n '1,180p' patches/efidriver-v2.patch
+
+      # 6. 測試 patch 是否可以套用
       - name: Check patch
         run: |
           cd grub
+
+          echo "===== git apply --check ====="
           git apply --check ../patches/efidriver-v2.patch
+
+      # 7. 真正套用 patch
+      #    只有上一步成功才會執行
+      - name: Apply patch
+        run: |
+          cd grub
+
+          git apply ../patches/efidriver-v2.patch
+
+          echo "===== Patch applied successfully ====="
+
+      # 8. 確認 efidriver 已經進入原始碼
+      - name: Verify patch
+        run: |
+          cd grub
+
+          echo "===== Check efidriver ====="
+
+          grep -n "grub_cmd_efidriver" \
+            grub-core/loader/efi/chainloader.c
+
+          echo
+          echo "===== Check efidriver command ====="
+
+          grep -n '"efidriver"' \
+            grub-core/loader/efi/chainloader.c
+
+      # 9. 顯示最後的 git diff
+      - name: Show diff
+        run: |
+          cd grub
+
+          echo "===== git diff --stat ====="
+          git diff --stat
+
+          echo
+          echo "===== git diff ====="
+          git diff -- grub-core/loader/efi/chainloader.c
