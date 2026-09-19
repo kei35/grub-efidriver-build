@@ -4,23 +4,17 @@ on:
   workflow_dispatch:
 
 jobs:
-  build:
+  patch-test:
     runs-on: ubuntu-24.04
 
     steps:
-      - name: Download GRUB source
+      - name: Clone GRUB
         run: |
           git clone https://gitlab.com/gnu_grub/grub.git
           cd grub
           git checkout 9c34d56c2dafcd2737db0e3e49df63bce4d8b504
 
-      - name: Download efidriver patch
+      - name: Check patch
         run: |
-          curl -L \
-            "https://lists.gnu.org/archive/html/grub-devel/2024-10/msg00332.html" \
-            -o patch.html
-
-      - name: Show downloaded files
-        run: |
-          ls -lh
-          echo "Patch page downloaded."
+          cd grub
+          git apply --check ../patches/efidriver-v2.patch
