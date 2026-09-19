@@ -26,6 +26,7 @@ jobs:
         run: |
           git clone https://gitlab.com/gnu_grub/grub.git
           cd grub
+          # efidriver v2 patch 的 base commit
           git checkout 9c34d56c2dafcd2737db0e3e49df63bce4d8b504
 
       # 4. 顯示目前 GRUB commit
@@ -34,11 +35,16 @@ jobs:
           cd grub
           git log -1 --oneline --decorate
 
-      # 5. 套用你 repo 裡的 efidriver patch
+      # 5. 套用 efidriver patch（郵件格式）
       - name: Apply efidriver patch
         run: |
           cd grub
-          git apply ../patches/efidriver-v2.patch
+          # 嘗試用 git am（郵件格式 patch）
+          git am ../patches/efidriver-v2.patch || \
+          # 如果失敗，再 fallback 用 git apply（純 diff）
+          git apply --ignore-space-change --ignore-whitespace ../patches/efidriver-v2.patch || \
+          # 最後保險用 patch 指令
+          patch -p1 < ../patches/efidriver-v2.patch
 
       # 6. 編譯 GRUB
       - name: Build GRUB
