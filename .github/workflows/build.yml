@@ -1,95 +1,358 @@
-name: Test GRUB efidriver Patch
+name: Build GRUB with efidriver
 
 on:
   workflow_dispatch:
 
 jobs:
-  patch-test:
+  build:
     runs-on: ubuntu-24.04
 
     steps:
-      # 1. 取得我們自己的 GitHub repository
+      # ------------------------------------------------------------
+      # 1. 取得自己的 GitHub repository
+      # ------------------------------------------------------------
       - name: Checkout build repository
         uses: actions/checkout@v4
 
-      # 2. 下載 GRUB 原始碼
+      # ------------------------------------------------------------
+      # 2. 安裝 GRUB 編譯所需工具
+      # ------------------------------------------------------------
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+
+          sudo apt-get install -y \
+            autoconf \
+            automake \
+            autopoint \
+            gettext \
+            pkg-config \
+            flex \
+            bison \
+            gcc \
+            make \
+            gettext \
+            xorriso \
+            mtools \
+            python3 \
+            nasm \
+            grub-efi-amd64-bin \
+            grub-efi-amd64-dev
+
+      # ------------------------------------------------------------
+      # 3. 下載 GRUB
+      # ------------------------------------------------------------
       - name: Clone GRUB
         run: |
           git clone https://gitlab.com/gnu_grub/grub.git
+
           cd grub
 
-          # 使用 efidriver v2 patch 指定的 base commit
+          # efidriver v2 patch 的 base commit
           git checkout 9c34d56c2dafcd2737db0e3e49df63bce4d8b504
 
-      # 3. 確認目前 GRUB 版本
-      - name: Show GRUB commit
+      # ------------------------------------------------------------
+      # 4. 顯示目前 GRUB commit
+      # ------------------------------------------------------------
+      - name: Show GRUB version
         run: |
           cd grub
 
           echo "===== GRUB commit ====="
           git log -1 --oneline --decorate
 
-          echo
-          echo "===== GRUB status ====="
-          git status
-
-      # 4. 顯示 patch 要修改的位置
-      #    這一步只是除錯，不會修改任何檔案
-      - name: Show chainloader source
+      # ------------------------------------------------------------
+      # 5. 修改 chainloader.c
+      #
+      # 不使用 git apply。
+      # 直接按照官方 efidriver v2 patch 的內容修改原始碼。
+      # ------------------------------------------------------------
+      - name: Apply efidriver changes
         run: |
           cd grub
 
-          echo "===== chainloader.c lines 55-90 ====="
-          nl -ba grub-core/loader/efi/chainloader.c | sed -n '55,90p'
+          python3 <<'PY'
+          from pathlib import Path
 
-      # 5. 顯示 patch 開頭
-      - name: Show patch
-        run: |
-          echo "===== efidriver patch ====="
-          sed -n '1,180p' patches/efidriver-v2.patch
+          path = Path("grub-core/loader/efi/chainloader.c")
+          text = path.read_text()
 
-      # 6. 測試 patch 是否可以套用
-      - name: Check patch
+          original = text
+
+          # ----------------------------------------------------------
+          # 1. 加入 stdbool.h
+          # ----------------------------------------------------------
+
+          old = """/* TODO: support load options.  */
+
+          #include <grub/loader.h>"""
+
+          new = """/* TODO: support load options.  */
+
+          #include <stdbool.h>
+          #include <grub/loader.h>"""
+
+          if old not in text:
+              raise SystemExit("ERROR: Cannot find include section")
+
+          text = text.replace(old, new, 1)
+
+          # ----------------------------------------------------------
+          # 2. 將 grub_chainloader_boot 拆成 start_efi_image
+          # ----------------------------------------------------------
+
+          old = """static grub_err_t
+          grub_chainloader_boot (void *context)
+          {
+            grub_efi_handle_t image_handle = (grub_efi_handle_t) context;
+            grub_efi_boot_services_t *b;
+            grub_efi_status_t status;
+            grub_efi_uintn_t exit_data_size;
+            grub_efi_char16_t *exit_data = NULL;
+
+            b = grub_efi_system_table->boot_services;
+            status = b->start_image (image_handle, &exit_data_size, &exit_data);
+            if (status != GRUB_EFI_SUCCESS)
+              {
+                if (exit_data)
+          	{
+          	  char *buf;
+          	  buf = grub_malloc (exit_data_size * 4 + 1);
+          	  if (buf)
+          	    {
+          	      *grub_utf16_to_utf8 ((grub_uint8_t *) buf,
+          				   exit_data, exit_data_size) = 0;
+
+          	      grub_error (GRUB_ERR_BAD_OS, "%s", buf);
+          	      grub_free (buf);
+          	    }
+          	}
+                else
+          	grub_error (GRUB_ERR_BAD_OS, "unknown error");
+              }
+
+            if (exit_data)
+              b->free_pool (exit_data);
+
+            grub_loader_unset ();
+
+            return grub_errno;
+          }"""
+
+          new = """static grub_err_t
+          start_efi_image (grub_efi_handle_t image_handle, bool driver)
+          {
+            grub_efi_boot_services_t *b;
+            grub_efi_status_t status;
+            grub_efi_uintn_t exit_data_size;
+            grub_efi_char16_t *exit_data = NULL;
+
+            b = grub_efi_system_table->boot_services;
+            status = b->start_image (image_handle, &exit_data_size, &exit_data);
+            /* EFI_ABORTED is a normal return code for "initializing" drivers
+               which indicates that "the driver did what it wanted and unloaded" */
+            if (status != GRUB_EFI_SUCCESS && !(driver && status == GRUB_EFI_ABORTED))
+              {
+                if (exit_data)
+          	{
+          	  char *buf;
+          	  buf = grub_malloc (exit_data_size * 4 + 1);
+          	  if (buf)
+          	    {
+          	      *grub_utf16_to_utf8 ((grub_uint8_t *) buf,
+          				   exit_data, exit_data_size) = 0;
+
+          	      grub_error (GRUB_ERR_BAD_OS, "%s", buf);
+          	      grub_free (buf);
+          	    }
+          	}
+                else
+          	grub_error (GRUB_ERR_BAD_OS, "unknown error");
+              }
+
+            if (exit_data)
+              b->free_pool (exit_data);
+
+            return grub_errno;
+          }
+
+          static grub_err_t
+          grub_chainloader_boot (void *context)
+          {
+            grub_efi_handle_t image_handle = (grub_efi_handle_t) context;
+            grub_err_t ret;
+
+            ret = start_efi_image (image_handle, false);
+
+            grub_loader_unset ();
+
+            return ret;
+          }"""
+
+          if old not in text:
+              raise SystemExit(
+                  "ERROR: Cannot find grub_chainloader_boot section"
+              )
+
+          text = text.replace(old, new, 1)
+
+          # ----------------------------------------------------------
+          # 3. 將 grub_cmd_chainloader 改成 load_efi_image
+          # ----------------------------------------------------------
+
+          old = """static grub_err_t
+          grub_cmd_chainloader (grub_command_t cmd __attribute__ ((unused)),
+          		      int argc, char *argv[])"""
+
+          new = """static grub_err_t
+          load_efi_image (int argc, char *argv[], grub_efi_handle_t *image_ret)"""
+
+          if old not in text:
+              raise SystemExit(
+                  "ERROR: Cannot find grub_cmd_chainloader declaration"
+              )
+
+          text = text.replace(old, new, 1)
+
+          # ----------------------------------------------------------
+          # 4. chainloader 原本最後設定 loader 的地方
+          # ----------------------------------------------------------
+
+          old = """  grub_loader_set_ex (grub_chainloader_boot, grub_chainloader_unload, image_handle, 0);
+            return 0;"""
+
+          new = """  *image_ret = image_handle;
+            return GRUB_ERR_NONE;"""
+
+          if old not in text:
+              raise SystemExit(
+                  "ERROR: Cannot find original grub_loader_set_ex"
+              )
+
+          text = text.replace(old, new, 1)
+
+          # ----------------------------------------------------------
+          # 5. 在 load_efi_image 後重新加入 grub_cmd_chainloader
+          #    並加入 grub_cmd_efidriver
+          # ----------------------------------------------------------
+
+          old = """static grub_command_t cmd;
+
+          GRUB_MOD_INIT(chainloader)
+          {
+            cmd = grub_register_command ("chainloader", grub_cmd_chainloader,
+          			       0, N_("Load another boot loader."));
+            my_mod = mod;
+          }
+
+          GRUB_MOD_FINI(chainloader)
+          {
+            grub_unregister_command (cmd);
+          }"""
+
+          new = """static grub_err_t
+          grub_cmd_chainloader (grub_command_t cmd __attribute__ ((unused)),
+                                int argc, char *argv[])
+          {
+            grub_efi_handle_t image_handle = NULL;
+            grub_err_t ret;
+
+            ret = load_efi_image (argc, argv, &image_handle);
+            if (ret != GRUB_ERR_NONE)
+              return ret;
+
+            grub_loader_set_ex (grub_chainloader_boot, grub_chainloader_unload,
+                                 image_handle, 0);
+            return GRUB_ERR_NONE;
+          }
+
+          static grub_err_t
+          grub_cmd_efidriver (grub_command_t cmd __attribute__ ((unused)),
+                              int argc, char *argv[])
+          {
+            grub_efi_handle_t image_handle = NULL;
+            grub_err_t ret;
+
+            ret = load_efi_image (argc, argv, &image_handle);
+            if (ret != GRUB_ERR_NONE)
+              return ret;
+
+            ret = start_efi_image (image_handle, true);
+
+            grub_dl_unref (my_mod);
+
+            return ret;
+          }
+
+          static grub_command_t cmd_chainloader;
+          static grub_command_t cmd_efidriver;
+
+          GRUB_MOD_INIT(chainloader)
+          {
+            cmd_chainloader = grub_register_command ("chainloader",
+                                                     grub_cmd_chainloader,
+                                                     0,
+                                                     N_("Load another boot loader."));
+            cmd_efidriver = grub_register_command ("efidriver",
+                                                   grub_cmd_efidriver,
+                                                   0,
+                                                   N_("Load a efi driver."));
+            my_mod = mod;
+          }
+
+          GRUB_MOD_FINI(chainloader)
+          {
+            grub_unregister_command (cmd_chainloader);
+            grub_unregister_command (cmd_efidriver);
+          }"""
+
+          if old not in text:
+              raise SystemExit(
+                  "ERROR: Cannot find command registration section"
+              )
+
+          text = text.replace(old, new, 1)
+
+          # ----------------------------------------------------------
+          # 寫回
+          # ----------------------------------------------------------
+
+          if text == original:
+              raise SystemExit("ERROR: No changes were made")
+
+          path.write_text(text)
+
+          print("efidriver changes applied successfully")
+          PY
+
+      # ------------------------------------------------------------
+      # 6. 確認修改結果
+      # ------------------------------------------------------------
+      - name: Verify efidriver source
         run: |
           cd grub
 
-          echo "===== git apply --check ====="
-          git apply --check ../patches/efidriver-v2.patch
+          echo "===== efidriver function ====="
 
-      # 7. 真正套用 patch
-      #    只有上一步成功才會執行
-      - name: Apply patch
-        run: |
-          cd grub
-
-          git apply ../patches/efidriver-v2.patch
-
-          echo "===== Patch applied successfully ====="
-
-      # 8. 確認 efidriver 已經進入原始碼
-      - name: Verify patch
-        run: |
-          cd grub
-
-          echo "===== Check efidriver ====="
-
-          grep -n "grub_cmd_efidriver" \
+          grep -n -A20 -B5 "grub_cmd_efidriver" \
             grub-core/loader/efi/chainloader.c
 
           echo
-          echo "===== Check efidriver command ====="
+          echo "===== efidriver command ====="
 
           grep -n '"efidriver"' \
             grub-core/loader/efi/chainloader.c
 
-      # 9. 顯示最後的 git diff
+      # ------------------------------------------------------------
+      # 7. 顯示 Git diff
+      # ------------------------------------------------------------
       - name: Show diff
         run: |
           cd grub
 
-          echo "===== git diff --stat ====="
           git diff --stat
 
           echo
           echo "===== git diff ====="
+
           git diff -- grub-core/loader/efi/chainloader.c
