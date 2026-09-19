@@ -73,8 +73,7 @@ index 869307bf3..77185e3aa 100644
  {
    grub_file_t file = 0;
    grub_ssize_t size;
-@@ -400,8 +412,8 @@ grub_cmd_chainloader (grub_command_t cmd __attribute__ 
- ((unused)),
+@@ -400,8 +412,8 @@ grub_cmd_chainloader (grub_command_t cmd __attribute__ ((unused)),
    b->free_pages (address, pages);
    grub_free (file_path);
  
@@ -86,8 +85,7 @@ image_handle, 0);
  
   fail:
  
-@@ -425,16 +437,53 @@ grub_cmd_chainloader (grub_command_t cmd __attribute__ 
- ((unused)),
+@@ -425,16 +437,53 @@ grub_cmd_chainloader (grub_command_t cmd __attribute__ ((unused)),
    return grub_errno;
  }
  
