@@ -58,7 +58,7 @@ jobs:
       - name: Build GRUB EFI
         run: |
           cd grub
-          grub-mkimage -O x86_64-efi -o grubx64.efi efidriver chainloader
+          grub-mkimage -O x86_64-efi -o grubx64.efi -p /boot/grub efidriver chainloader
 
       # 8. 上傳成果
       - name: Upload artifact
