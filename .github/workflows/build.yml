@@ -17,14 +17,7 @@ jobs:
           cd grub
           git checkout 9c34d56c2dafcd2737db0e3e49df63bce4d8b504
 
-      - name: Check patch file
-        run: |
-          echo "=== Patch file ==="
-          wc -l patches/efidriver-v2.patch
-          echo "=== Patch header ==="
-          head -20 patches/efidriver-v2.patch
-
-            - name: Repair patch line wrapping
+      - name: Repair patch
         run: |
           python3 - <<'PY'
           from pathlib import Path
@@ -32,25 +25,30 @@ jobs:
           p = Path("patches/efidriver-v2.patch")
           s = p.read_text()
 
-          replacements = {
-              "@@ -209,8 +222,7 @@ make_file_path (grub_efi_device_path_t *dp, const char \n *filename)":
-              "@@ -209,8 +222,7 @@ make_file_path (grub_efi_device_path_t *dp, const char *filename)",
+          fixes = [
+              (
+                  "@@ -209,8 +222,7 @@ make_file_path (grub_efi_device_path_t *dp, const char \n *filename)",
+                  "@@ -209,8 +222,7 @@ make_file_path (grub_efi_device_path_t *dp, const char *filename)"
+              ),
+              (
+                  "@@ -400,8 +412,8 @@ grub_cmd_chainloader (grub_command_t cmd __attribute__ \n ((unused)),",
+                  "@@ -400,8 +412,8 @@ grub_cmd_chainloader (grub_command_t cmd __attribute__ ((unused)),"
+              ),
+              (
+                  "-  grub_loader_set_ex (grub_chainloader_boot, grub_chainloader_unload, \n-image_handle, 0);",
+                  "-  grub_loader_set_ex (grub_chainloader_boot, grub_chainloader_unload, image_handle, 0);"
+              ),
+              (
+                  "+  grub_loader_set_ex (grub_chainloader_boot, grub_chainloader_unload, \n+image_handle, 0);",
+                  "+  grub_loader_set_ex (grub_chainloader_boot, grub_chainloader_unload, image_handle, 0);"
+              ),
+              (
+                  "+  cmd_chainloader = grub_register_command (\"chainloader\", \n+ grub_cmd_chainloader,",
+                  "+  cmd_chainloader = grub_register_command (\"chainloader\", grub_cmd_chainloader,"
+              ),
+          ]
 
-              "@@ -400,8 +412,8 @@ grub_cmd_chainloader (grub_command_t cmd __attribute__ \n ((unused)),":
-              "@@ -400,8 +412,8 @@ grub_cmd_chainloader (grub_command_t cmd __attribute__ ((unused)),",
-
-              "-  grub_loader_set_ex (grub_chainloader_boot, grub_chainloader_unload, \n-image_handle, 0);":
-              "-  grub_loader_set_ex (grub_chainloader_boot, grub_chainloader_unload, image_handle, 0);",
-
-              "+  grub_loader_set_ex (grub_chainloader_boot, grub_chainloader_unload, \n+image_handle, 0);":
-              "+  grub_loader_set_ex (grub_chainloader_boot, grub_chainloader_unload, image_handle, 0);",
-
-              "+  cmd_chainloader = grub_register_command (\"chainloader\", \n+ grub_cmd_chainloader,":
-              "+  cmd_chainloader = grub_register_command (\"chainloader\", grub_cmd_chainloader,",
-
-          }
-
-          for old, new in replacements.items():
+          for old, new in fixes:
               s = s.replace(old, new)
 
           p.write_text(s)
