@@ -31,13 +31,11 @@ jobs:
             bison \
             gcc \
             make \
-            gettext \
             xorriso \
             mtools \
             python3 \
             nasm \
-            grub-efi-amd64-bin \
-            grub-efi-amd64-dev
+            grub-efi-amd64-bin
 
       # ------------------------------------------------------------
       # 3. 下載 GRUB
