@@ -17,7 +17,7 @@ jobs:
 
 
       # ============================================================
-      # 2. 安裝 GRUB 編譯需要的工具
+      # 2. 安裝 GRUB 編譯環境
       # ============================================================
       - name: Install dependencies
         run: |
@@ -84,8 +84,7 @@ jobs:
       # 不使用 git apply。
       #
       # 直接由 Python 修改 source，
-      # 避免 Mailman HTML / email patch 複製造成的
-      # whitespace / 長行問題。
+      # 避免 email patch 複製造成 whitespace 問題。
       # ============================================================
       - name: Apply efidriver changes
         shell: bash
@@ -95,7 +94,6 @@ jobs:
           python3 <<'PY'
           from pathlib import Path
           import re
-          import sys
 
           path = Path("grub-core/loader/efi/chainloader.c")
           text = path.read_text()
@@ -103,10 +101,11 @@ jobs:
           print("Original source size:", len(text), "bytes")
 
 
-          # --------------------------------------------------------
-          # helper：找到 C function 的完整範圍
-          # --------------------------------------------------------
+          # ========================================================
+          # 找 C function 的完整範圍
+          # ========================================================
           def find_function(text, name):
+
               pattern = re.compile(
                   r"static\s+grub_err_t\s+"
                   + re.escape(name)
@@ -127,9 +126,6 @@ jobs:
 
               depth = 0
 
-              # 這裡只需要處理目標函式。
-              # chainloader.c 中這些函式的字串沒有會干擾
-              # brace counting 的特殊內容。
               for i in range(brace_start, len(text)):
 
                   if text[i] == "{":
@@ -147,7 +143,7 @@ jobs:
 
 
           # ========================================================
-          # A. 加入 <stdbool.h>
+          # A. 加入 stdbool.h
           # ========================================================
 
           if "#include <stdbool.h>" not in text:
@@ -172,15 +168,9 @@ jobs:
 
 
           # ========================================================
-          # B. grub_chainloader_boot
+          # B. 修改 grub_chainloader_boot()
           #
-          # 改成：
-          #
-          # start_efi_image()
-          #
-          # 然後保留原本的：
-          #
-          # grub_chainloader_boot()
+          # 加入 start_efi_image()
           # ========================================================
 
           result = find_function(
@@ -213,30 +203,50 @@ jobs:
             grub_efi_char16_t *exit_data = NULL;
 
             b = grub_efi_system_table->boot_services;
-            status = b->start_image (image_handle, &exit_data_size, &exit_data);
 
-            /* EFI_ABORTED is a normal return code for "initializing" drivers
-               which indicates that "the driver did what it wanted and unloaded" */
-            if (status != GRUB_EFI_SUCCESS && !(driver && status == GRUB_EFI_ABORTED))
+            status = b->start_image (
+              image_handle,
+              &exit_data_size,
+              &exit_data
+            );
+
+            /* EFI_ABORTED is a normal return code for "initializing"
+               drivers which indicates that the driver did what it
+               wanted and unloaded. */
+
+            if (status != GRUB_EFI_SUCCESS
+                && !(driver && status == GRUB_EFI_ABORTED))
               {
                 if (exit_data)
                   {
                     char *buf;
 
-                    buf = grub_malloc (exit_data_size * 4 + 1);
+                    buf = grub_malloc (
+                      exit_data_size * 4 + 1
+                    );
 
                     if (buf)
                       {
-                        *grub_utf16_to_utf8 ((grub_uint8_t *) buf,
-                                             exit_data, exit_data_size) = 0;
+                        *grub_utf16_to_utf8 (
+                          (grub_uint8_t *) buf,
+                          exit_data,
+                          exit_data_size
+                        ) = 0;
 
-                        grub_error (GRUB_ERR_BAD_OS, "%s", buf);
+                        grub_error (
+                          GRUB_ERR_BAD_OS,
+                          "%s",
+                          buf
+                        );
 
                         grub_free (buf);
                       }
                   }
                 else
-                  grub_error (GRUB_ERR_BAD_OS, "unknown error");
+                  grub_error (
+                    GRUB_ERR_BAD_OS,
+                    "unknown error"
+                  );
               }
 
             if (exit_data)
@@ -244,6 +254,7 @@ jobs:
 
             return grub_errno;
           }
+
 
           static grub_err_t
           grub_chainloader_boot (void *context)
@@ -253,7 +264,10 @@ jobs:
 
             grub_err_t ret;
 
-            ret = start_efi_image (image_handle, false);
+            ret = start_efi_image (
+              image_handle,
+              false
+            );
 
             grub_loader_unset ();
 
@@ -271,18 +285,8 @@ jobs:
 
 
           # ========================================================
-          # C. grub_cmd_chainloader
-          #
-          # 原本：
-          #
-          # grub_cmd_chainloader(...)
-          #
-          # 這一大段實際負責 LoadImage。
-          #
-          # 改名成：
-          #
-          # load_efi_image(...)
-          #
+          # C. 把原本 grub_cmd_chainloader()
+          # 改名成 load_efi_image()
           # ========================================================
 
           pattern = re.compile(
@@ -316,22 +320,14 @@ jobs:
               + text[match.end():]
           )
 
-          print("Changed grub_cmd_chainloader -> load_efi_image")
+          print(
+              "Changed grub_cmd_chainloader -> "
+              "load_efi_image"
+          )
 
 
           # ========================================================
           # D. 修改 load_efi_image() 成功返回部分
-          #
-          # 原本：
-          #
-          # grub_loader_set_ex(...)
-          # return 0;
-          #
-          # 改成：
-          #
-          # *image_ret = image_handle;
-          # return GRUB_ERR_NONE;
-          #
           # ========================================================
 
           pattern = re.compile(
@@ -346,7 +342,8 @@ jobs:
 
           if not match:
               raise RuntimeError(
-                  "Cannot find grub_loader_set_ex() inside load_efi_image()"
+                  "Cannot find grub_loader_set_ex() "
+                  "inside load_efi_image()"
               )
 
           replacement = """
@@ -361,11 +358,13 @@ jobs:
               + text[match.end():]
           )
 
-          print("Changed load_efi_image return section")
+          print(
+              "Changed load_efi_image return section"
+          )
 
 
           # ========================================================
-          # E. 找到 GRUB module registration
+          # E. 找 module registration
           # ========================================================
 
           registration_start = text.find(
@@ -399,7 +398,9 @@ jobs:
               )
 
 
-          # 找 GRUB_MOD_FINI 的完整 function body
+          # ========================================================
+          # 找 GRUB_MOD_FINI() 完整區塊
+          # ========================================================
 
           fini_brace = text.find(
               "{",
@@ -442,13 +443,19 @@ jobs:
           # ========================================================
 
           new_registration = r'''static grub_err_t
-          grub_cmd_chainloader (grub_command_t cmd __attribute__ ((unused)),
-                                int argc, char *argv[])
+          grub_cmd_chainloader (
+            grub_command_t cmd __attribute__ ((unused)),
+            int argc,
+            char *argv[])
           {
             grub_efi_handle_t image_handle = NULL;
             grub_err_t ret;
 
-            ret = load_efi_image (argc, argv, &image_handle);
+            ret = load_efi_image (
+              argc,
+              argv,
+              &image_handle
+            );
 
             if (ret != GRUB_ERR_NONE)
               return ret;
@@ -463,27 +470,39 @@ jobs:
             return GRUB_ERR_NONE;
           }
 
+
           static grub_err_t
-          grub_cmd_efidriver (grub_command_t cmd __attribute__ ((unused)),
-                              int argc, char *argv[])
+          grub_cmd_efidriver (
+            grub_command_t cmd __attribute__ ((unused)),
+            int argc,
+            char *argv[])
           {
             grub_efi_handle_t image_handle = NULL;
             grub_err_t ret;
 
-            ret = load_efi_image (argc, argv, &image_handle);
+            ret = load_efi_image (
+              argc,
+              argv,
+              &image_handle
+            );
 
             if (ret != GRUB_ERR_NONE)
               return ret;
 
-            ret = start_efi_image (image_handle, true);
+            ret = start_efi_image (
+              image_handle,
+              true
+            );
 
             grub_dl_unref (my_mod);
 
             return ret;
           }
 
+
           static grub_command_t cmd_chainloader;
           static grub_command_t cmd_efidriver;
+
 
           GRUB_MOD_INIT(chainloader)
           {
@@ -504,10 +523,16 @@ jobs:
             my_mod = mod;
           }
 
+
           GRUB_MOD_FINI(chainloader)
           {
-            grub_unregister_command (cmd_chainloader);
-            grub_unregister_command (cmd_efidriver);
+            grub_unregister_command (
+              cmd_chainloader
+            );
+
+            grub_unregister_command (
+              cmd_efidriver
+            );
           }'''
 
 
@@ -516,7 +541,6 @@ jobs:
               + new_registration
               + text[fini_end:]
           )
-
 
           print("Added efidriver command")
 
@@ -536,7 +560,7 @@ jobs:
 
 
       # ============================================================
-      # 6. 確認 efidriver 真的存在
+      # 6. 確認 source 裡真的有 efidriver
       # ============================================================
       - name: Verify efidriver source
         run: |
@@ -570,7 +594,7 @@ jobs:
 
 
       # ============================================================
-      # 7. Bootstrap
+      # 7. Bootstrap GRUB
       # ============================================================
       - name: Bootstrap GRUB
         run: |
@@ -580,13 +604,14 @@ jobs:
 
 
       # ============================================================
-      # 8. Configure
+      # 8. Configure GRUB
       #
       # 注意：
       #
-      # grub-install 不是 prefix。
+      # grub-install 是 GRUB 原始碼裡的一個工具，
+      # 不是我們拿來當 prefix 的目錄。
       #
-      # prefix 使用：
+      # 我們自己建立：
       #
       # $GITHUB_WORKSPACE/grub-install
       #
@@ -607,7 +632,7 @@ jobs:
 
 
       # ============================================================
-      # 9. 編譯
+      # 9. 編譯 GRUB
       # ============================================================
       - name: Build GRUB
         run: |
@@ -617,17 +642,7 @@ jobs:
 
 
       # ============================================================
-      # 10. 安裝到獨立 prefix
-      #
-      # 這一步非常重要。
-      #
-      # 之後的：
-      #
-      # grub-install/bin/grub-mkstandalone
-      #
-      # grub-install/lib/grub/x86_64-efi/
-      #
-      # 就會完整存在。
+      # 10. 安裝 GRUB 到獨立 prefix
       # ============================================================
       - name: Install GRUB to temporary prefix
         run: |
@@ -637,40 +652,82 @@ jobs:
 
 
       # ============================================================
-      # 11. 確認安裝結果
+      # 11. 診斷 GRUB modules
+      #
+      # 這一步目前非常重要。
+      #
+      # 我們不直接假設 chainloader.mod 一定存在。
+      #
+      # 先確認：
+      #
+      # 1. build 裡有沒有
+      # 2. install 裡有沒有
+      # 3. Makefile 是否有 chainloader
       # ============================================================
-      - name: Verify installed GRUB
+      - name: Diagnose GRUB modules
         run: |
           echo "========================================"
-          echo "Installed GRUB tools"
+          echo "Search chainloader.mod"
           echo "========================================"
 
-          ls -lh \
-            "$GITHUB_WORKSPACE/grub-install/bin/grub-mkstandalone"
+          echo
+          echo "--- build directory ---"
 
-          ls -lh \
-            "$GITHUB_WORKSPACE/grub-install/bin/grub-mkimage"
+          find \
+            "$GITHUB_WORKSPACE/grub/build" \
+            \( -name "chainloader.mod" \
+            -o -name "chainloader.module" \) \
+            -print \
+            | sort
+
+          echo
+          echo "--- install directory ---"
+
+          find \
+            "$GITHUB_WORKSPACE/grub-install" \
+            \( -name "chainloader.mod" \
+            -o -name "chainloader.module" \) \
+            -print \
+            | sort
+
 
           echo
           echo "========================================"
-          echo "EFI module directory"
+          echo "EFI modules in build/grub-core"
+          echo "========================================"
+
+          ls -lh \
+            "$GITHUB_WORKSPACE/grub/build/grub-core" \
+            | head -100
+
+
+          echo
+          echo "========================================"
+          echo "Installed EFI modules"
           echo "========================================"
 
           ls -lh \
             "$GITHUB_WORKSPACE/grub-install/lib/grub/x86_64-efi" \
-            | head -50
+            | head -100
+
 
           echo
           echo "========================================"
-          echo "moddep.lst"
+          echo "Search chainloader in Makefiles"
           echo "========================================"
 
-          ls -lh \
-            "$GITHUB_WORKSPACE/grub-install/lib/grub/x86_64-efi/moddep.lst"
+          grep -Rni \
+            "chainloader" \
+            "$GITHUB_WORKSPACE/grub/build/grub-core" \
+            --include="Makefile" \
+            --include="Makefile.am" \
+            --include="Makefile.in" \
+            | head -100 \
+            || true
 
 
       # ============================================================
-      # 12. 建立最小 GRUB configuration
+      # 12. 建立測試 grub.cfg
       # ============================================================
       - name: Create test grub.cfg
         run: |
@@ -698,16 +755,14 @@ jobs:
 
 
       # ============================================================
-      # 13. 建立真正的 BOOTX64.EFI
+      # 13. 建立 BOOTX64.EFI
       #
-      # 使用：
+      # 這裡暫時保留。
       #
-      # grub-install/bin/grub-mkstandalone
+      # 如果 chainloader.mod 不存在，
+      # 這一步會失敗。
       #
-      # module directory：
-      #
-      # grub-install/lib/grub/x86_64-efi
-      #
+      # 這正是我們現在要確認的問題。
       # ============================================================
       - name: Build GRUB EFI
         run: |
@@ -718,6 +773,7 @@ jobs:
           MKSTANDALONE="$PREFIX/bin/grub-mkstandalone"
 
           OUTPUT="$GITHUB_WORKSPACE/output/BOOTX64.EFI"
+
 
           echo "========================================"
           echo "Build GRUB EFI"
@@ -738,21 +794,34 @@ jobs:
           echo "OUTPUT:"
           echo "$OUTPUT"
 
+
           echo
           echo "========================================"
           echo "Checking paths"
           echo "========================================"
 
           test -f "$MKSTANDALONE"
+
           test -d "$MODULE_DIR"
+
           test -f "$MODULE_DIR/moddep.lst"
 
-          echo "All required paths exist."
+          echo "Required base paths exist."
+
+
+          echo
+          echo "Checking chainloader.mod..."
+
+          test -f "$MODULE_DIR/chainloader.mod"
+
+          echo "chainloader.mod exists."
+
 
           echo
           echo "========================================"
           echo "Running grub-mkstandalone"
           echo "========================================"
+
 
           "$MKSTANDALONE" \
             -d "$MODULE_DIR" \
@@ -774,6 +843,7 @@ jobs:
           ls -lh \
             "$GITHUB_WORKSPACE/output/BOOTX64.EFI"
 
+
           echo
           echo "========================================"
           echo "File information"
@@ -781,6 +851,7 @@ jobs:
 
           file \
             "$GITHUB_WORKSPACE/output/BOOTX64.EFI"
+
 
           echo
           echo "========================================"
@@ -791,11 +862,12 @@ jobs:
             "$GITHUB_WORKSPACE/output/BOOTX64.EFI" \
             | grep -i \
               -E "GNU GRUB|efidriver" \
-            | head -20 || true
+            | head -20 \
+            || true
 
 
       # ============================================================
-      # 15. 上傳 EFI
+      # 15. 上傳 BOOTX64.EFI
       # ============================================================
       - name: Upload GRUB EFI
         uses: actions/upload-artifact@v4
