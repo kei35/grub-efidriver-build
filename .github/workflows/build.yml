@@ -593,15 +593,21 @@ jobs:
 
 
       # ============================================================
-      # 7. Bootstrap GRUB
+      # 7. Bootstrap GRUB (指定 GitHub gnulib 鏡像站，避免 GNU 伺服器連線失敗)
       # ============================================================
       - name: Bootstrap GRUB
         run: |
           cd grub
 
-          ./bootstrap
+          # 指定使用 GitHub 鏡像站以確保連線穩定
+          export GNULIB_SRCDIR=
+          export GNULIB_URL="https://github.com/coreutils/gnulib.git"
 
-
+          # 執行 bootstrap
+          ./bootstrap --gnulib-srcdir="" || {
+            echo "Bootstrap failed, retrying with main mirror..."
+            ./bootstrap
+          }
       # ============================================================
       # 8. Configure GRUB
       # ============================================================
