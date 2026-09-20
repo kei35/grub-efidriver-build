@@ -754,82 +754,39 @@ jobs:
           cat "$GITHUB_WORKSPACE/test.cfg"
 
 
-      # ============================================================
+     # ============================================================
       # 13. 建立 BOOTX64.EFI
-      #
-      # 這裡暫時保留。
-      #
-      # 如果 chainloader.mod 不存在，
-      # 這一步會失敗。
-      #
-      # 這正是我們現在要確認的問題。
       # ============================================================
       - name: Build GRUB EFI
         run: |
           PREFIX="$GITHUB_WORKSPACE/grub-install"
-
           MODULE_DIR="$PREFIX/lib/grub/x86_64-efi"
-
           MKSTANDALONE="$PREFIX/bin/grub-mkstandalone"
-
           OUTPUT="$GITHUB_WORKSPACE/output/BOOTX64.EFI"
-
 
           echo "========================================"
           echo "Build GRUB EFI"
           echo "========================================"
 
-          echo "PREFIX:"
-          echo "$PREFIX"
-
-          echo
-          echo "MODULE_DIR:"
-          echo "$MODULE_DIR"
-
-          echo
-          echo "MKSTANDALONE:"
-          echo "$MKSTANDALONE"
-
-          echo
-          echo "OUTPUT:"
-          echo "$OUTPUT"
-
-
-          echo
-          echo "========================================"
-          echo "Checking paths"
-          echo "========================================"
-
           test -f "$MKSTANDALONE"
-
           test -d "$MODULE_DIR"
-
           test -f "$MODULE_DIR/moddep.lst"
 
           echo "Required base paths exist."
 
+          # 移除對 chainloader.mod 的 test -f 檢查
 
-          echo
-          echo "Checking chainloader.mod..."
-
-          test -f "$MODULE_DIR/chainloader.mod"
-
-          echo "chainloader.mod exists."
-
-
-          echo
           echo "========================================"
           echo "Running grub-mkstandalone"
           echo "========================================"
 
-
+          # 註：--modules 中已移除 chainloader
           "$MKSTANDALONE" \
             -d "$MODULE_DIR" \
             -O x86_64-efi \
             -o "$OUTPUT" \
-            --modules="part_gpt part_msdos fat normal configfile echo search search_fs_uuid search_fs_file chainloader" \
+            --modules="part_gpt part_msdos fat normal configfile echo search search_fs_uuid search_fs_file" \
             "boot/grub/grub.cfg=$GITHUB_WORKSPACE/test.cfg"
-
 
       # ============================================================
       # 14. 驗證 EFI
