@@ -82,7 +82,6 @@ jobs:
       # 5. 修改 chainloader.c
       #
       # 不使用 git apply。
-      #
       # 直接由 Python 修改 source，
       # 避免 email patch 複製造成 whitespace 問題。
       # ============================================================
@@ -605,16 +604,6 @@ jobs:
 
       # ============================================================
       # 8. Configure GRUB
-      #
-      # 注意：
-      #
-      # grub-install 是 GRUB 原始碼裡的一個工具，
-      # 不是我們拿來當 prefix 的目錄。
-      #
-      # 我們自己建立：
-      #
-      # $GITHUB_WORKSPACE/grub-install
-      #
       # ============================================================
       - name: Configure GRUB
         run: |
@@ -653,16 +642,6 @@ jobs:
 
       # ============================================================
       # 11. 診斷 GRUB modules
-      #
-      # 這一步目前非常重要。
-      #
-      # 我們不直接假設 chainloader.mod 一定存在。
-      #
-      # 先確認：
-      #
-      # 1. build 裡有沒有
-      # 2. install 裡有沒有
-      # 3. Makefile 是否有 chainloader
       # ============================================================
       - name: Diagnose GRUB modules
         run: |
@@ -732,7 +711,6 @@ jobs:
       - name: Create Embedded Early GRUB Config
         run: |
           cat << 'EOF' > test.cfg
-          # 設為唯讀且不顯示過多除錯訊息
           set prefix=(memdisk)/boot/grub
 
           # 1. 搜尋包含 /EFI/BOOT/grub.cfg 的磁區，並設為根目錄 ($root)
@@ -749,7 +727,7 @@ jobs:
           EOF
 
 
-     # ============================================================
+      # ============================================================
       # 13. 建立 BOOTX64.EFI
       # ============================================================
       - name: Build GRUB EFI
@@ -757,7 +735,8 @@ jobs:
           PREFIX="$GITHUB_WORKSPACE/grub-install"
           MODULE_DIR="$PREFIX/lib/grub/x86_64-efi"
           MKSTANDALONE="$PREFIX/bin/grub-mkstandalone"
-          OUTPUT="$GITHUB_WORKSPACE/output/BOOTX64.EFI"
+          OUTPUT_DIR="$GITHUB_WORKSPACE/output"
+          OUTPUT="$OUTPUT_DIR/BOOTX64.EFI"
 
           echo "========================================"
           echo "Build GRUB EFI"
@@ -767,21 +746,22 @@ jobs:
           test -d "$MODULE_DIR"
           test -f "$MODULE_DIR/moddep.lst"
 
-          echo "Required base paths exist."
+          # 建立輸出資料夾，避免 grub-mkstandalone 找不到路徑報錯
+          mkdir -p "$OUTPUT_DIR"
 
-          # 移除對 chainloader.mod 的 test -f 檢查
+          echo "Required base paths exist."
 
           echo "========================================"
           echo "Running grub-mkstandalone"
           echo "========================================"
 
-          # 註：--modules 中已移除 chainloader
           "$MKSTANDALONE" \
             -d "$MODULE_DIR" \
             -O x86_64-efi \
             -o "$OUTPUT" \
             --modules="part_gpt part_msdos fat normal configfile echo search search_fs_uuid search_fs_file" \
             "boot/grub/grub.cfg=$GITHUB_WORKSPACE/test.cfg"
+
 
       # ============================================================
       # 14. 驗證 EFI
