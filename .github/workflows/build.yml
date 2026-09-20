@@ -1,71 +1,90 @@
-name: GRUB Patch Debug
+name: Build GRUB EFI with Error Snippet
 
 on:
   workflow_dispatch:
 
 jobs:
-  build-original:
+  build:
     runs-on: ubuntu-24.04
+
     steps:
+      # 1. 取得 repo
       - name: Checkout
         uses: actions/checkout@v4
 
+      # 2. 安裝依賴
       - name: Install dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y \
             autoconf automake autopoint gettext pkg-config \
             flex bison gcc make xorriso mtools python3 nasm \
-            libefivar-dev uuid-dev
+            libefivar-dev uuid-dev \
+            libdevmapper-dev libfreetype6-dev libncurses5-dev libusb-dev help2man
 
+      # 3. Clone GRUB 官方 repo
       - name: Clone GRUB
         run: |
           git clone https://git.savannah.gnu.org/git/grub.git
           cd grub
           git checkout 9c34d56c2dafcd2737db0e3e49df63bce4d8b504
 
-      - name: Build GRUB (no patch)
-        run: |
-          cd grub
-          ./bootstrap
-          ./configure --with-platform=efi --target=x86_64 --prefix=/usr --disable-werror
-          make -j$(nproc)
-          make install DESTDIR=$PWD/grub-install
-          find grub-install -name 'chainloader.mod' || echo "chainloader.mod not found"
-          find grub-install -name 'moddep.lst' || echo "moddep.lst not found"
-
-  build-patched:
-    runs-on: ubuntu-24.04
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            autoconf automake autopoint gettext pkg-config \
-            flex bison gcc make xorriso mtools python3 nasm \
-            libefivar-dev uuid-dev
-
-      - name: Clone GRUB
-        run: |
-          git clone https://git.savannah.gnu.org/git/grub.git
-          cd grub
-          git checkout 9c34d56c2dafcd2737db0e3e49df63bce4d8b504
-
-      - name: Apply patch
+      # 4. Apply patch (可選)
+      - name: Apply efidriver patch
         run: |
           cd grub
           git am ../patches/efidriver-v2.patch || \
           git apply --ignore-space-change --ignore-whitespace ../patches/efidriver-v2.patch
 
-      - name: Build GRUB (with patch)
+      # 5. Configure & build，並存 log
+      - name: Build GRUB
         run: |
           cd grub
           ./bootstrap
           ./configure --with-platform=efi --target=x86_64 --prefix=/usr --disable-werror
-          make -j$(nproc)
-          make install DESTDIR=$PWD/grub-install
-          find grub-install -name 'chainloader.mod' || echo "chainloader.mod not found"
+          make -j$(nproc) | tee build.log
+          make install DESTDIR=$PWD/grub-install | tee -a build.log
+
+      # 6. 檢查 moddep.lst 與模組
+      - name: Check installed modules
+        run: |
+          cd grub
           find grub-install -name 'moddep.lst' || echo "moddep.lst not found"
+          find grub-install -name 'chainloader.mod' || echo "chainloader.mod not found"
+          ls -la grub-install/usr/lib/grub/x86_64-efi || ls -la grub-install/lib/grub/x86_64-efi || true
+
+      # 7. mkimage
+      - name: Build GRUB EFI
+        run: |
+          cd grub
+          MODULE_DIR="$PWD/grub-install/usr/lib/grub/x86_64-efi"
+          if [ ! -d "$MODULE_DIR" ]; then
+            MODULE_DIR="$PWD/grub-install/lib/grub/x86_64-efi"
+          fi
+          grub-mkimage -O x86_64-efi -o grubx64.efi -p /boot/grub \
+            -d "$MODULE_DIR" \
+            chainloader part_gpt part_msdos fat ext2 normal linux \
+            efi_gop efi_uga
+
+      # 8. 擷取錯誤片段
+      - name: Extract error snippet
+        run: |
+          cd grub
+          errline=$(grep -n -m1 -E "error:|fatal:|undefined reference|undefined symbol" build.log | cut -d: -f1)
+          if [ -n "$errline" ]; then
+            start=$(( errline>20 ? errline-20 : 1 ))
+            end=$(( errline+40 ))
+            sed -n "${start},${end}p" build.log > errors_snippet.log
+          else
+            echo "No obvious error lines found; dumping last 200 lines" > errors_snippet.log
+            tail -n 200 build.log >> errors_snippet.log
+          fi
+
+      # 9. 上傳成果與錯誤片段
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: grub-build-results
+          path: |
+            grub/grubx64.efi
+            grub/errors_snippet.log
