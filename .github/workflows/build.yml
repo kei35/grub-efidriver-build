@@ -729,29 +729,24 @@ jobs:
       # ============================================================
       # 12. 建立測試 grub.cfg
       # ============================================================
-      - name: Create test grub.cfg
+      - name: Create Embedded Early GRUB Config
         run: |
-          mkdir -p "$GITHUB_WORKSPACE/output"
+          cat << 'EOF' > test.cfg
+          # 設為唯讀且不顯示過多除錯訊息
+          set prefix=(memdisk)/boot/grub
 
-          cat > "$GITHUB_WORKSPACE/test.cfg" <<'EOF'
-          set timeout=5
-          set default=0
-
-          menuentry "GRUB efidriver test" {
-              echo "GRUB efidriver build"
-              echo
-              echo "efidriver command is included."
-              echo
-              echo "D-pad / keyboard test comes later."
-              sleep 5
-          }
+          # 1. 搜尋包含 /EFI/BOOT/grub.cfg 的磁區，並設為根目錄 ($root)
+          if search --no-floppy --file /EFI/BOOT/grub.cfg --set=root ; then
+              echo "Found external /EFI/BOOT/grub.cfg, loading..."
+              configfile /EFI/BOOT/grub.cfg
+          else
+              # 2. 若找不到外部 cfg，則備用顯示提示訊息並進入命令列
+              echo "================================================"
+              echo "  /EFI/BOOT/grub.cfg not found!"
+              echo "  Dropping into GRUB Interactive Shell..."
+              echo "================================================"
+          fi
           EOF
-
-          echo "========================================"
-          echo "Generated grub.cfg"
-          echo "========================================"
-
-          cat "$GITHUB_WORKSPACE/test.cfg"
 
 
      # ============================================================
