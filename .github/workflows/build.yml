@@ -1,4 +1,4 @@
-name: Build GRUB with efidriver
+name: Build GRUB EFI
 
 on:
   workflow_dispatch:
@@ -8,73 +8,60 @@ jobs:
     runs-on: ubuntu-24.04
 
     steps:
-      # 1. 取得 repository
-      - name: Checkout build repository
+      # 1. 取得 repo
+      - name: Checkout
         uses: actions/checkout@v4
 
-      # 2. 安裝 GRUB 編譯所需工具
+      # 2. 安裝依賴
       - name: Install dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y \
             autoconf automake autopoint gettext pkg-config \
             flex bison gcc make xorriso mtools python3 nasm \
-            grub-efi-amd64-bin
+            libefivar-dev uuid-dev
 
-      # 3. 下載 GRUB
+      # 3. Clone GRUB 官方 repo
       - name: Clone GRUB
         run: |
           git clone https://git.savannah.gnu.org/git/grub.git
           cd grub
           git checkout 9c34d56c2dafcd2737db0e3e49df63bce4d8b504
 
-      # 4. 顯示目前 GRUB commit
-      - name: Show GRUB version
-        run: |
-          cd grub
-          git log -1 --oneline --decorate
-
-      # 5. 套用 efidriver patch
+      # 4. Apply patch
       - name: Apply efidriver patch
         run: |
           cd grub
           git am ../patches/efidriver-v2.patch || \
-          git apply --ignore-space-change --ignore-whitespace ../patches/efidriver-v2.patch || \
-          patch -p1 < ../patches/efidriver-v2.patch
+          git apply --ignore-space-change --ignore-whitespace ../patches/efidriver-v2.patch
 
-   # 6. 編譯 GRUB 並安裝到暫存目錄
-      - name: Build and install GRUB locally
+      # 5. Configure & build
+      - name: Build GRUB
         run: |
           cd grub
           ./bootstrap
           ./configure --with-platform=efi --target=x86_64 --prefix=/usr --disable-werror
           make -j$(nproc)
-          # 安裝到本 repo 下的 grub-install 目錄，避免覆寫系統
+
+      # 6. 安裝到暫存目錄
+      - name: Install GRUB locally
+        run: |
+          cd grub
           make install DESTDIR=$PWD/grub-install
-      
-          # 檢查模組是否已安裝
-          echo "Installed modules under:"
-          find grub-install -type f -name '*.mod' -print | sed -n '1,200p'
-          find grub-install -type f -name 'chainloader.mod' -print || echo "chainloader.mod not installed"
-      
-      # 7. 產生 EFI binary，指定模組來源為剛安裝的路徑
+          find grub-install -type f -name '*.mod' | head -n 20
+
+      # 7. mkimage，指定模組來源
       - name: Build GRUB EFI
         run: |
           cd grub
-          # 指定 -d 到剛剛安裝的模組目錄（視 configure prefix 可能是 usr/lib/grub/x86_64-efi）
           MODULE_DIR="$PWD/grub-install/usr/lib/grub/x86_64-efi"
           if [ ! -d "$MODULE_DIR" ]; then
-            # 有些系統或 configure 會放在 usr/lib/grub/x86_64-efi 或 lib/grub/x86_64-efi
             MODULE_DIR="$PWD/grub-install/lib/grub/x86_64-efi"
           fi
-          echo "Using module dir: $MODULE_DIR"
-          ls -la "$MODULE_DIR" || true
-      
           grub-mkimage -O x86_64-efi -o grubx64.efi -p /boot/grub \
             -d "$MODULE_DIR" \
             chainloader part_gpt part_msdos fat ext2 normal linux \
             efi_gop efi_uga
-
 
       # 8. 上傳成果
       - name: Upload artifact
