@@ -1,18 +1,15 @@
-name: Build GRUB EFI
+name: GRUB Patch Debug
 
 on:
   workflow_dispatch:
 
 jobs:
-  build:
+  build-original:
     runs-on: ubuntu-24.04
-
     steps:
-      # 1. 取得 repo
       - name: Checkout
         uses: actions/checkout@v4
 
-      # 2. 安裝依賴
       - name: Install dependencies
         run: |
           sudo apt-get update
@@ -21,63 +18,54 @@ jobs:
             flex bison gcc make xorriso mtools python3 nasm \
             libefivar-dev uuid-dev
 
-      # 3. Clone GRUB 官方 repo
       - name: Clone GRUB
         run: |
           git clone https://git.savannah.gnu.org/git/grub.git
           cd grub
           git checkout 9c34d56c2dafcd2737db0e3e49df63bce4d8b504
 
-      # 4. Apply patch
-      - name: Apply efidriver patch
-        run: |
-          cd grub
-          git am ../patches/efidriver-v2.patch || \
-          git apply --ignore-space-change --ignore-whitespace ../patches/efidriver-v2.patch
-
-      # 5. Configure & build
-      - name: Build GRUB
+      - name: Build GRUB (no patch)
         run: |
           cd grub
           ./bootstrap
           ./configure --with-platform=efi --target=x86_64 --prefix=/usr --disable-werror
           make -j$(nproc)
-
-      # 6. 安裝到暫存目錄
-      - name: Install GRUB locally
-        run: |
-          cd grub
-          rm -rf grub-install
-          mkdir -p grub-install
           make install DESTDIR=$PWD/grub-install
-          echo "List installed modules:"
-          find grub-install -type f -name '*.mod' | head -n 20
-
-      # 7. 檢查 moddep.lst
-      - name: Check moddep.lst
-        run: |
-          cd grub
-          echo "Search for moddep.lst under grub-install"
+          find grub-install -name 'chainloader.mod' || echo "chainloader.mod not found"
           find grub-install -name 'moddep.lst' || echo "moddep.lst not found"
-          echo "List x86_64-efi directory contents"
-          ls -la grub-install/usr/lib/grub/x86_64-efi || ls -la grub-install/lib/grub/x86_64-efi || true
 
-      # 8. mkimage，指定安裝目錄
-      - name: Build GRUB EFI
+  build-patched:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            autoconf automake autopoint gettext pkg-config \
+            flex bison gcc make xorriso mtools python3 nasm \
+            libefivar-dev uuid-dev
+
+      - name: Clone GRUB
+        run: |
+          git clone https://git.savannah.gnu.org/git/grub.git
+          cd grub
+          git checkout 9c34d56c2dafcd2737db0e3e49df63bce4d8b504
+
+      - name: Apply patch
         run: |
           cd grub
-          MODULE_DIR="$PWD/grub-install/usr/lib/grub/x86_64-efi"
-          if [ ! -d "$MODULE_DIR" ]; then
-            MODULE_DIR="$PWD/grub-install/lib/grub/x86_64-efi"
-          fi
-          grub-mkimage -O x86_64-efi -o grubx64.efi -p /boot/grub \
-            -d "$MODULE_DIR" \
-            chainloader part_gpt part_msdos fat ext2 normal linux \
-            efi_gop efi_uga
+          git am ../patches/efidriver-v2.patch || \
+          git apply --ignore-space-change --ignore-whitespace ../patches/efidriver-v2.patch
 
-      # 9. 上傳成果
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: grubx64-efi
-          path: grub/grubx64.efi
+      - name: Build GRUB (with patch)
+        run: |
+          cd grub
+          ./bootstrap
+          ./configure --with-platform=efi --target=x86_64 --prefix=/usr --disable-werror
+          make -j$(nproc)
+          make install DESTDIR=$PWD/grub-install
+          find grub-install -name 'chainloader.mod' || echo "chainloader.mod not found"
+          find grub-install -name 'moddep.lst' || echo "moddep.lst not found"
