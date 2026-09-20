@@ -43,10 +43,12 @@ jobs:
           ./configure --with-platform=efi --target=x86_64 --prefix=/usr --disable-werror
           make -j$(nproc)
 
-      # 6. 安裝到暫存目錄
+      # 6. 安裝到暫存目錄（修正 mkdir）
       - name: Install GRUB locally
         run: |
           cd grub
+          rm -f grub-install
+          mkdir -p grub-install
           make install DESTDIR=$PWD/grub-install
           find grub-install -type f -name '*.mod' | head -n 20
 
