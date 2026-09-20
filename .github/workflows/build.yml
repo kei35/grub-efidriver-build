@@ -43,25 +43,19 @@ jobs:
           ./configure --with-platform=efi --target=x86_64 --prefix=/usr --disable-werror
           make -j$(nproc)
 
-      # 6. 安裝到暫存目錄（修正 mkdir）
-      - name: Install GRUB locally
+      # 6. 檢查模組是否存在於 .libs
+      - name: Check modules
         run: |
           cd grub
-          rm -f grub-install
-          mkdir -p grub-install
-          make install DESTDIR=$PWD/grub-install
-          find grub-install -type f -name '*.mod' | head -n 20
+          ls -la grub-core/.libs | head -n 50
+          find grub-core/.libs -name 'chainloader.mod' || echo "chainloader.mod not found"
 
-      # 7. mkimage，指定模組來源
+      # 7. mkimage，直接用 .libs 當模組來源
       - name: Build GRUB EFI
         run: |
           cd grub
-          MODULE_DIR="$PWD/grub-install/usr/lib/grub/x86_64-efi"
-          if [ ! -d "$MODULE_DIR" ]; then
-            MODULE_DIR="$PWD/grub-install/lib/grub/x86_64-efi"
-          fi
           grub-mkimage -O x86_64-efi -o grubx64.efi -p /boot/grub \
-            -d "$MODULE_DIR" \
+            -d grub-core/.libs \
             chainloader part_gpt part_msdos fat ext2 normal linux \
             efi_gop efi_uga
 
