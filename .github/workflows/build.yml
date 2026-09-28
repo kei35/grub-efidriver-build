@@ -725,40 +725,66 @@ jobs:
           # ============================================================
           # 1. 載入 Xbox 控制器 EFI 驅動程式
           # ============================================================
-          # A. 優先尋找隨身碟或自訂放置的驅動
-          if search --no-floppy --file /EFI/BOOT/drivers/UsbXbox360Dxe.efi --set=drv_root ; then
-              echo "Found Xbox Controller Driver in /EFI/BOOT/drivers/, loading..."
+          if search --no-floppy --file --set=drv_root /EFI/BOOT/drivers/UsbXbox360Dxe.efi ; then
+              echo "Loading Xbox Driver from /EFI/BOOT/drivers/..."
               efidriver ($drv_root)/EFI/BOOT/drivers/UsbXbox360Dxe.efi
 
-          # B. 預設引用存放在 rEFInd 目錄下的驅動
-          elif search --no-floppy --file /EFI/rEFInd/drivers_x64/UsbXbox360Dxe.efi --set=drv_root ; then
-              echo "Found Xbox Controller Driver in rEFInd folder, loading..."
+          elif search --no-floppy --file --set=drv_root /EFI/rEFInd/drivers_x64/UsbXbox360Dxe.efi ; then
+              echo "Loading Xbox Driver from rEFInd folder..."
               efidriver ($drv_root)/EFI/rEFInd/drivers_x64/UsbXbox360Dxe.efi
           fi
 
 
           # ============================================================
-          # 2. 搜尋並載入外部 Linux / OS 的主選單 (grub.cfg)
+          # 2. 搜尋並轉接作業系統（順序：主系統選單 -> ESP Stub -> 直接 Chainload EFI）
           # ============================================================
-          if search --no-floppy --file /EFI/BOOT/grub.cfg --set=root ; then
-              echo "Loading /EFI/BOOT/grub.cfg..."
-              configfile /EFI/BOOT/grub.cfg
 
-          elif search --no-floppy --file /boot/grub/grub.cfg --set=root ; then
-              echo "Loading /boot/grub/grub.cfg..."
-              configfile /boot/grub/grub.cfg
+          # A. 優先尋找 Linux 主系統磁區上的正式 GRUB 選單 (適用 Manjaro / CachyOS-GRUB / Arch)
+          if search --no-floppy --file --set=root /boot/grub/grub.cfg ; then
+              echo "Found /boot/grub/grub.cfg, loading main menu..."
+              clear
+              configfile ($root)/boot/grub/grub.cfg
 
-          elif search --no-floppy --file /boot/grub2/grub.cfg --set=root ; then
-              echo "Loading /boot/grub2/grub.cfg..."
-              configfile /boot/grub2/grub.cfg
+          # B. 搜尋 ESP 磁區上的發行版專屬 Stub / 靜態 cfg
+          elif search --no-floppy --file --set=root /EFI/manjaro/grub.cfg ; then
+              echo "Found Manjaro ESP Stub, loading..."
+              clear
+              configfile ($root)/EFI/manjaro/grub.cfg
+
+          elif search --no-floppy --file --set=root /EFI/cachyos/grub.cfg ; then
+              echo "Found CachyOS ESP Stub, loading..."
+              clear
+              configfile ($root)/EFI/cachyos/grub.cfg
+
+          elif search --no-floppy --file --set=root /EFI/BOOT/grub.cfg ; then
+              echo "Found /EFI/BOOT/grub.cfg, loading..."
+              clear
+              configfile ($root)/EFI/BOOT/grub.cfg
+
+          # C. 若 CachyOS 使用預設 systemd-boot (無 grub.cfg)，改以 chainload 啟動
+          elif search --no-floppy --file --set=root /EFI/systemd/systemd-bootx64.efi ; then
+              echo "Found CachyOS systemd-boot loader, chainloading..."
+              chainloader ($root)/EFI/systemd/systemd-bootx64.efi
+              boot
+
+          # D. 備用：直接啟動 ESP 內的 CachyOS 或 Manjaro 原生 EFI 檔
+          elif search --no-floppy --file --set=root /EFI/cachyos/grubx64.efi ; then
+              echo "Chainloading /EFI/cachyos/grubx64.efi..."
+              chainloader ($root)/EFI/cachyos/grubx64.efi
+              boot
+
+          elif search --no-floppy --file --set=root /EFI/manjaro/grubx64.efi ; then
+              echo "Chainloading /EFI/manjaro/grubx64.efi..."
+              chainloader ($root)/EFI/manjaro/grubx64.efi
+              boot
 
           else
-              # 3. 如果主目錄都沒有發現 .cfg，顯示提示訊息
+              # 全都找不到時進入 fallback 互動模式，防止畫面閃爍
               echo "================================================"
-              echo "  No external grub.cfg found on any partition!"
-              echo "  Xbox Controller driver remains ACTIVE."
-              echo "  Dropping into GRUB Interactive Shell..."
+              echo "  Xbox Controller Driver Status: LOADED"
+              echo "  No compatible Linux config or EFI loader found!"
               echo "================================================"
+              normal
           fi
           EOF
 
