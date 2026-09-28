@@ -715,21 +715,48 @@ jobs:
 
 
       # ============================================================
-      # 12. 建立測試 grub.cfg
+      # 12. 建立通用相容的 Embedded Early GRUB Config
       # ============================================================
       - name: Create Embedded Early GRUB Config
         run: |
-          cat << 'EOF' > test.cfg
+          cat << 'EOF' > early.cfg
           set prefix=(memdisk)/boot/grub
 
-          # 1. 搜尋包含 /EFI/BOOT/grub.cfg 的磁區，並設為根目錄 ($root)
+          # ============================================================
+          # 1. 載入 Xbox 控制器 EFI 驅動程式
+          # ============================================================
+          # A. 優先尋找隨身碟或自訂放置的驅動
+          if search --no-floppy --file /EFI/BOOT/drivers/UsbXbox360Dxe.efi --set=drv_root ; then
+              echo "Found Xbox Controller Driver in /EFI/BOOT/drivers/, loading..."
+              efidriver ($drv_root)/EFI/BOOT/drivers/UsbXbox360Dxe.efi
+
+          # B. 預設引用存放在 rEFInd 目錄下的驅動
+          elif search --no-floppy --file /EFI/rEFInd/drivers_x64/UsbXbox360Dxe.efi --set=drv_root ; then
+              echo "Found Xbox Controller Driver in rEFInd folder, loading..."
+              efidriver ($drv_root)/EFI/rEFInd/drivers_x64/UsbXbox360Dxe.efi
+          fi
+
+
+          # ============================================================
+          # 2. 搜尋並載入外部 Linux / OS 的主選單 (grub.cfg)
+          # ============================================================
           if search --no-floppy --file /EFI/BOOT/grub.cfg --set=root ; then
-              echo "Found external /EFI/BOOT/grub.cfg, loading..."
+              echo "Loading /EFI/BOOT/grub.cfg..."
               configfile /EFI/BOOT/grub.cfg
+
+          elif search --no-floppy --file /boot/grub/grub.cfg --set=root ; then
+              echo "Loading /boot/grub/grub.cfg..."
+              configfile /boot/grub/grub.cfg
+
+          elif search --no-floppy --file /boot/grub2/grub.cfg --set=root ; then
+              echo "Loading /boot/grub2/grub.cfg..."
+              configfile /boot/grub2/grub.cfg
+
           else
-              # 2. 若找不到外部 cfg，則備用顯示提示訊息並進入命令列
+              # 3. 如果主目錄都沒有發現 .cfg，顯示提示訊息
               echo "================================================"
-              echo "  /EFI/BOOT/grub.cfg not found!"
+              echo "  No external grub.cfg found on any partition!"
+              echo "  Xbox Controller driver remains ACTIVE."
               echo "  Dropping into GRUB Interactive Shell..."
               echo "================================================"
           fi
@@ -747,29 +774,14 @@ jobs:
           OUTPUT_DIR="$GITHUB_WORKSPACE/output"
           OUTPUT="$OUTPUT_DIR/BOOTX64.EFI"
 
-          echo "========================================"
-          echo "Build GRUB EFI"
-          echo "========================================"
-
-          test -f "$MKSTANDALONE"
-          test -d "$MODULE_DIR"
-          test -f "$MODULE_DIR/moddep.lst"
-
-          # 建立輸出資料夾，避免 grub-mkstandalone 找不到路徑報錯
           mkdir -p "$OUTPUT_DIR"
-
-          echo "Required base paths exist."
-
-          echo "========================================"
-          echo "Running grub-mkstandalone"
-          echo "========================================"
 
           "$MKSTANDALONE" \
             -d "$MODULE_DIR" \
             -O x86_64-efi \
             -o "$OUTPUT" \
             --modules="part_gpt part_msdos fat normal configfile echo search search_fs_uuid search_fs_file" \
-            "boot/grub/grub.cfg=$GITHUB_WORKSPACE/test.cfg"
+            "boot/grub/grub.cfg=$GITHUB_WORKSPACE/early.cfg"
 
 
       # ============================================================
