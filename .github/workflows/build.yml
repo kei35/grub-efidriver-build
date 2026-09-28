@@ -715,77 +715,63 @@ jobs:
 
 
       # ============================================================
-      # 12. 建立通用相容的 Embedded Early GRUB Config
+      # 12. 建立純 ESP 轉接選單 (不依賴 Linux/BTRFS 磁區，手把驅動全程常駐)
       # ============================================================
       - name: Create Embedded Early GRUB Config
         run: |
           cat << 'EOF' > early.cfg
           set prefix=(memdisk)/boot/grub
+          set default=0
+          set timeout=10
 
           # ============================================================
-          # 1. 載入 Xbox 控制器 EFI 驅動程式
+          # 1. 載入 Xbox 控制器 EFI 驅動程式 (常駐於 UEFI 記憶體)
           # ============================================================
-          if search --no-floppy --file --set=drv_root /EFI/rEFInd/drivers_x64/UsbXbox360Dxe.efi ; then
-              echo "Loading Xbox Driver from rEFInd folder..."
-              efidriver ($drv_root)/EFI/rEFInd/drivers_x64/UsbXbox360Dxe.efi
-
-          elif search --no-floppy --file --set=drv_root /EFI/BOOT/drivers/UsbXbox360Dxe.efi ; then
+          if search --no-floppy --file --set=drv_root /EFI/BOOT/drivers/UsbXbox360Dxe.efi ; then
               echo "Loading Xbox Driver from /EFI/BOOT/drivers/..."
               efidriver ($drv_root)/EFI/BOOT/drivers/UsbXbox360Dxe.efi
+
+          elif search --no-floppy --file --set=drv_root /EFI/rEFInd/drivers_x64/UsbXbox360Dxe.efi ; then
+              echo "Loading Xbox Driver from rEFInd folder..."
+              efidriver ($drv_root)/EFI/rEFInd/drivers_x64/UsbXbox360Dxe.efi
           fi
 
-
           # ============================================================
-          # 2. 搜尋並轉接作業系統（順序：主系統選單 -> ESP Stub -> 直接 Chainload EFI）
+          # 2. 自訂多重開機選單 (僅鏈接 ESP 內的 .efi 檔)
           # ============================================================
 
-          # A. 優先尋找 Linux 主系統磁區上的正式 GRUB 選單 (適用 Manjaro / CachyOS-GRUB / Arch)
-          if search --no-floppy --file --set=root /boot/grub/grub.cfg ; then
-              echo "Found /boot/grub/grub.cfg, loading main menu..."
-              clear
-              configfile ($root)/boot/grub/grub.cfg
-
-          # B. 搜尋 ESP 磁區上的發行版專屬 Stub / 靜態 cfg
-          elif search --no-floppy --file --set=root /EFI/manjaro/grub.cfg ; then
-              echo "Found Manjaro ESP Stub, loading..."
-              clear
-              configfile ($root)/EFI/manjaro/grub.cfg
-
-          elif search --no-floppy --file --set=root /EFI/cachyos/grub.cfg ; then
-              echo "Found CachyOS ESP Stub, loading..."
-              clear
-              configfile ($root)/EFI/cachyos/grub.cfg
-
-          elif search --no-floppy --file --set=root /EFI/BOOT/grub.cfg ; then
-              echo "Found /EFI/BOOT/grub.cfg, loading..."
-              clear
-              configfile ($root)/EFI/BOOT/grub.cfg
-
-          # C. 若 CachyOS 使用預設 systemd-boot (無 grub.cfg)，改以 chainload 啟動
-          elif search --no-floppy --file --set=root /EFI/systemd/systemd-bootx64.efi ; then
-              echo "Found CachyOS systemd-boot loader, chainloading..."
-              chainloader ($root)/EFI/systemd/systemd-bootx64.efi
-              boot
-
-          # D. 備用：直接啟動 ESP 內的 CachyOS 或 Manjaro 原生 EFI 檔
-          elif search --no-floppy --file --set=root /EFI/cachyos/grubx64.efi ; then
-              echo "Chainloading /EFI/cachyos/grubx64.efi..."
-              chainloader ($root)/EFI/cachyos/grubx64.efi
-              boot
-
-          elif search --no-floppy --file --set=root /EFI/manjaro/grubx64.efi ; then
-              echo "Chainloading /EFI/manjaro/grubx64.efi..."
+          menuentry "1. Manjaro Linux (grubx64.efi)" {
+              search --no-floppy --file --set=root /EFI/manjaro/grubx64.efi
               chainloader ($root)/EFI/manjaro/grubx64.efi
-              boot
+          }
 
-          else
-              # 全都找不到時進入 fallback 互動模式，防止畫面閃爍
-              echo "================================================"
-              echo "  Xbox Controller Driver Status: LOADED"
-              echo "  No compatible Linux config or EFI loader found!"
-              echo "================================================"
-              normal
-          fi
+          menuentry "2. CachyOS / Arch (systemd-bootx64.efi)" {
+              search --no-floppy --file --set=root /EFI/systemd/systemd-bootx64.efi
+              chainloader ($root)/EFI/systemd/systemd-bootx64.efi
+          }
+
+          menuentry "3. CachyOS (grubx64.efi)" {
+              search --no-floppy --file --set=root /EFI/cachyos/grubx64.efi
+              chainloader ($root)/EFI/cachyos/grubx64.efi
+          }
+
+          menuentry "4. rEFInd Boot Manager" {
+              search --no-floppy --file --set=root /EFI/rEFInd/refind_x64.efi
+              chainloader ($root)/EFI/rEFInd/refind_x64.efi
+          }
+
+          menuentry "5. Windows Boot Manager" {
+              search --no-floppy --file --set=root /EFI/Microsoft/Boot/bootmgfw.efi
+              chainloader ($root)/EFI/Microsoft/Boot/bootmgfw.efi
+          }
+
+          menuentry "Reboot System" {
+              reboot
+          }
+
+          menuentry "Power Off" {
+              halt
+          }
           EOF
 
 
