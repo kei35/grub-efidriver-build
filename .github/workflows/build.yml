@@ -725,13 +725,13 @@ jobs:
           # ============================================================
           # 1. 載入 Xbox 控制器 EFI 驅動程式
           # ============================================================
-          if search --no-floppy --file --set=drv_root /EFI/BOOT/drivers/UsbXbox360Dxe.efi ; then
-              echo "Loading Xbox Driver from /EFI/BOOT/drivers/..."
-              efidriver ($drv_root)/EFI/BOOT/drivers/UsbXbox360Dxe.efi
-
-          elif search --no-floppy --file --set=drv_root /EFI/rEFInd/drivers_x64/UsbXbox360Dxe.efi ; then
+          if search --no-floppy --file --set=drv_root /EFI/rEFInd/drivers_x64/UsbXbox360Dxe.efi ; then
               echo "Loading Xbox Driver from rEFInd folder..."
               efidriver ($drv_root)/EFI/rEFInd/drivers_x64/UsbXbox360Dxe.efi
+
+          elif search --no-floppy --file --set=drv_root /EFI/BOOT/drivers/UsbXbox360Dxe.efi ; then
+              echo "Loading Xbox Driver from /EFI/BOOT/drivers/..."
+              efidriver ($drv_root)/EFI/BOOT/drivers/UsbXbox360Dxe.efi
           fi
 
 
