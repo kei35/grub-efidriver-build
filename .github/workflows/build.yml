@@ -715,17 +715,15 @@ jobs:
 
 
       # ============================================================
-      # 12. 建立純 ESP 轉接選單 (不依賴 Linux/BTRFS 磁區，手把驅動全程常駐)
+      # 12. 建立自動偵測 .cfg -> 找不到才顯示多重 EFI 轉接選單
       # ============================================================
       - name: Create Embedded Early GRUB Config
         run: |
           cat << 'EOF' > early.cfg
           set prefix=(memdisk)/boot/grub
-          set default=0
-          set timeout=10
 
           # ============================================================
-          # 1. 載入 Xbox 控制器 EFI 驅動程式 (常駐於 UEFI 記憶體)
+          # 1. 載入 Xbox 控制器 EFI 驅動程式 (常駐記憶體)
           # ============================================================
           if search --no-floppy --file --set=drv_root /EFI/BOOT/drivers/UsbXbox360Dxe.efi ; then
               echo "Loading Xbox Driver from /EFI/BOOT/drivers/..."
@@ -736,42 +734,72 @@ jobs:
               efidriver ($drv_root)/EFI/rEFInd/drivers_x64/UsbXbox360Dxe.efi
           fi
 
+
           # ============================================================
-          # 2. 自訂多重開機選單 (僅鏈接 ESP 內的 .efi 檔)
+          # 2. 第一順位：搜尋非 BTRFS / ESP 上的標準 .cfg 設定檔
           # ============================================================
+          if search --no-floppy --file --set=root /boot/grub/grub.cfg ; then
+              echo "Found /boot/grub/grub.cfg, loading..."
+              clear
+              configfile ($root)/boot/grub/grub.cfg
 
-          menuentry "1. Manjaro Linux (grubx64.efi)" {
-              search --no-floppy --file --set=root /EFI/manjaro/grubx64.efi
-              chainloader ($root)/EFI/manjaro/grubx64.efi
-          }
+          elif search --no-floppy --file --set=root /EFI/BOOT/grub.cfg ; then
+              echo "Found /EFI/BOOT/grub.cfg, loading..."
+              clear
+              configfile ($root)/EFI/BOOT/grub.cfg
 
-          menuentry "2. CachyOS / Arch (systemd-bootx64.efi)" {
-              search --no-floppy --file --set=root /EFI/systemd/systemd-bootx64.efi
-              chainloader ($root)/EFI/systemd/systemd-bootx64.efi
-          }
+          elif search --no-floppy --file --set=root /EFI/manjaro/grub.cfg ; then
+              echo "Found Manjaro Stub, loading..."
+              clear
+              configfile ($root)/EFI/manjaro/grub.cfg
 
-          menuentry "3. CachyOS (grubx64.efi)" {
-              search --no-floppy --file --set=root /EFI/cachyos/grubx64.efi
-              chainloader ($root)/EFI/cachyos/grubx64.efi
-          }
+          elif search --no-floppy --file --set=root /EFI/cachyos/grub.cfg ; then
+              echo "Found CachyOS Stub, loading..."
+              clear
+              configfile ($root)/EFI/cachyos/grub.cfg
 
-          menuentry "4. rEFInd Boot Manager" {
-              search --no-floppy --file --set=root /EFI/rEFInd/refind_x64.efi
-              chainloader ($root)/EFI/rEFInd/refind_x64.efi
-          }
 
-          menuentry "5. Windows Boot Manager" {
-              search --no-floppy --file --set=root /EFI/Microsoft/Boot/bootmgfw.efi
-              chainloader ($root)/EFI/Microsoft/Boot/bootmgfw.efi
-          }
+          # ============================================================
+          # 3. 第二順位 (Fallback)：找不到 .cfg 時，自動跳出系統選單
+          # ============================================================
+          else
+              echo "No .cfg file found. Displaying fallback EFI menu..."
+              set default=0
+              set timeout=10
 
-          menuentry "Reboot System" {
-              reboot
-          }
+              menuentry "1. Manjaro Linux (grubx64.efi)" {
+                  search --no-floppy --file --set=root /EFI/manjaro/grubx64.efi
+                  chainloader ($root)/EFI/manjaro/grubx64.efi
+              }
 
-          menuentry "Power Off" {
-              halt
-          }
+              menuentry "2. CachyOS / Arch (systemd-bootx64.efi)" {
+                  search --no-floppy --file --set=root /EFI/systemd/systemd-bootx64.efi
+                  chainloader ($root)/EFI/systemd/systemd-bootx64.efi
+              }
+
+              menuentry "3. CachyOS (grubx64.efi)" {
+                  search --no-floppy --file --set=root /EFI/cachyos/grubx64.efi
+                  chainloader ($root)/EFI/cachyos/grubx64.efi
+              }
+
+              menuentry "4. rEFInd Boot Manager" {
+                  search --no-floppy --file --set=root /EFI/rEFInd/refind_x64.efi
+                  chainloader ($root)/EFI/rEFInd/refind_x64.efi
+              }
+
+              menuentry "5. Windows Boot Manager" {
+                  search --no-floppy --file --set=root /EFI/Microsoft/Boot/bootmgfw.efi
+                  chainloader ($root)/EFI/Microsoft/Boot/bootmgfw.efi
+              }
+
+              menuentry "Reboot System" {
+                  reboot
+              }
+
+              menuentry "Power Off" {
+                  halt
+              }
+          fi
           EOF
 
 
