@@ -48,17 +48,20 @@ jobs:
 
 
       # ============================================================
-      # 3. 下載 GRUB
+      # 3. 檢查並確認現有的 GRUB 原始碼
       # ============================================================
-      - name: Clone GRUB
+      - name: Verify local GRUB source
         run: |
-          git clone https://gitlab.com/gnu_grub/grub.git
+          if [ ! -d "grub" ]; then
+              echo "Error: 'grub' directory not found in repository!"
+              exit 1
+          fi
 
+          echo "Using repository's local GRUB source."
           cd grub
 
-          # efidriver v2 patch 的 base commit
+          # 確保切換到正確的 commit 基準
           git checkout 9c34d56c2dafcd2737db0e3e49df63bce4d8b504
-
 
       # ============================================================
       # 4. 顯示 GRUB 版本
