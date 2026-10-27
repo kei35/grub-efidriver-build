@@ -603,19 +603,22 @@ jobs:
         run: |
           cd grub
 
-          # 1. 確保清理可能殘留的 gnulib 暫存目錄
+          # 1. 賦予 bootstrap 執行權限（解決 Permission denied 問題）
+          chmod +x bootstrap
+
+          # 2. 確保清理可能殘留的 gnulib 暫存目錄
           rm -rf gnulib
 
-          # 2. 透過 --url 參數直接拉取 GitHub 鏡像站，避免 savannah.gnu.org 連線逾時
+          # 3. 透過 --url 參數直接拉取 GitHub 鏡像站，避免 savannah.gnu.org 連線逾時
           ./bootstrap \
             --no-git \
             --gnulib-srcdir=gnulib \
             --url="https://github.com/coreutils/gnulib.git" || {
               echo "Standard bootstrap with custom URL failed, falling back to manual git clone..."
               git clone https://github.com/coreutils/gnulib.git gnulib
+              chmod +x bootstrap
               ./bootstrap --gnulib-srcdir=gnulib
             }
-
 
       # ============================================================
       # 8. Configure GRUB
