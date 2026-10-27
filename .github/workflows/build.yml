@@ -59,9 +59,7 @@ jobs:
 
           echo "Using repository's local GRUB source."
           cd grub
-
-          # 確保切換到正確的 commit 基準
-          git checkout 9c34d56c2dafcd2737db0e3e49df63bce4d8b504
+          git status
 
       # ============================================================
       # 4. 顯示 GRUB 版本
