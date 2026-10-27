@@ -1,6 +1,9 @@
 name: Build GRUB EFI with efidriver
 
 on:
+  push:
+    branches: [ master, dev ]
+    tags: [ 'v*' ]
   workflow_dispatch:
 
 jobs:
@@ -611,6 +614,8 @@ jobs:
               git clone https://github.com/coreutils/gnulib.git gnulib
               ./bootstrap --gnulib-srcdir=gnulib
             }
+
+
       # ============================================================
       # 8. Configure GRUB
       # ============================================================
@@ -860,11 +865,33 @@ jobs:
 
 
       # ============================================================
-      # 15. 上傳 BOOTX64.EFI
+      # 15. 上傳 GitHub Actions 產物 (Artifact)
       # ============================================================
-      - name: Upload GRUB EFI
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: grub-efidriver-x86_64-efi
-          path: output/BOOTX64.EFI
-          if-no-files-found: error
+          name: GRUB-efidriver-${{ github.sha }}
+          path: output/*
+
+
+      # ============================================================
+      # 16. 打包成品為 7z 壓縮檔
+      # ============================================================
+      - name: Package output into 7z
+        run: |
+          sudo apt-get install -y p7zip-full
+          7z a output/GRUB-efidriver-${{ github.ref_name }}.7z output/*
+
+
+      # ============================================================
+      # 17. 建立 GitHub Release 並上傳檔案
+      # ============================================================
+      - name: Create Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v1
+        with:
+          files: output/GRUB-efidriver-${{ github.ref_name }}.7z
+          generate_release_notes: true
+          draft: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
