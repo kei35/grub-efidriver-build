@@ -730,13 +730,23 @@ jobs:
           # ============================================================
           # 1. 載入 Xbox 控制器 EFI 驅動程式 (常駐記憶體)
           # ============================================================
-          if search --no-floppy --file --set=drv_root /EFI/BOOT/drivers/UsbXbox360Dxe.efi ; then
-              echo "Loading Xbox Driver from /EFI/BOOT/drivers/..."
-              efidriver ($drv_root)/EFI/BOOT/drivers/UsbXbox360Dxe.efi
+          if search --no-floppy --file --set=root /EFI/BOOT/BOOTX64.EFI ; then
+              
+              if [ -f ($root)/EFI/BOOT/drivers/UsbXbox360Dxe.efi ]; then
+                  echo "Loading Xbox Driver from /EFI/BOOT/drivers/..."
+                  efidriver ($root)/EFI/BOOT/drivers/UsbXbox360Dxe.efi
 
-          elif search --no-floppy --file --set=drv_root /EFI/rEFInd/drivers_x64/UsbXbox360Dxe.efi ; then
-              echo "Loading Xbox Driver from rEFInd folder..."
-              efidriver ($drv_root)/EFI/rEFInd/drivers_x64/UsbXbox360Dxe.efi
+              elif [ -f ($root)/EFI/rEFInd/drivers_x64/UsbXbox360Dxe.efi ]; then
+                  echo "Loading Xbox Driver from rEFInd folder..."
+                  efidriver ($root)/EFI/rEFInd/drivers_x64/UsbXbox360Dxe.efi
+
+              else
+                  echo "Error: UsbXbox360Dxe.efi not found!"
+                  echo "Press any key to reboot, or power off the machine."
+                  # 利用 read 指令讓畫面停住，等待使用者按鍵
+                  read
+                  reboot
+              fi
           fi
 
 
