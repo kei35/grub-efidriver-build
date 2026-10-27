@@ -732,13 +732,13 @@ jobs:
           # ============================================================
           if search --no-floppy --file --set=root /EFI/BOOT/BOOTX64.EFI ; then
               
-              if [ -f ($root)/EFI/BOOT/drivers/UsbXbox360Dxe.efi ]; then
+              if [ -f ($root)/EFI/rEFInd/drivers_x64/UsbXbox360Dxe_.efi ]; then
+                  echo "Loading Xbox Driver from rEFInd folder..."
+                  efidriver ($root)/EFI/rEFInd/drivers_x64/UsbXbox360Dxe_.efi
+
+              elif [ -f ($root)/EFI/BOOT/drivers/UsbXbox360Dxe.efi ]; then
                   echo "Loading Xbox Driver from /EFI/BOOT/drivers/..."
                   efidriver ($root)/EFI/BOOT/drivers/UsbXbox360Dxe.efi
-
-              elif [ -f ($root)/EFI/rEFInd/drivers_x64/UsbXbox360Dxe.efi ]; then
-                  echo "Loading Xbox Driver from rEFInd folder..."
-                  efidriver ($root)/EFI/rEFInd/drivers_x64/UsbXbox360Dxe.efi
 
               else
                   echo "Error: UsbXbox360Dxe.efi not found!"
