@@ -320,47 +320,91 @@ jobs:
 
 
       # ============================================================
-      # 10. 建立 Early GRUB Config (含自訂驅動路徑與防呆)
+      # 10. 建立 Embedded Early GRUB Config (注入時間版本號)
       # ============================================================
       - name: Create Embedded Early GRUB Config
         run: |
-          cat << 'EOF' > early.cfg
+          # 1. 取得 UTC+8 (台灣/台北時間) 並格式化為 ver.YYYY.MMDD.HHMM
+          # 若想使用 UTC 時間，可改為 date -u
+          BUILD_VER=$(TZ='Asia/Taipei' date +"ver.%Y.%m%d.%H%M")
+          echo "BUILD_VER=$BUILD_VER" >> $GITHUB_ENV
+
+          # 2. 生成 early.cfg 並把 VERSION 寫入變數與開機訊息中
+          cat << EOF > early.cfg
           set prefix=(memdisk)/boot/grub
+          set build_version="$BUILD_VER"
+
+          echo "=================================================="
+          echo " Custom GRUB EFI ($BUILD_VER)"
+          echo "=================================================="
 
           # ============================================================
           # 1. 載入 Xbox 控制器 EFI 驅動程式 (常駐記憶體)
           # ============================================================
           if search --no-floppy --file --set=root /EFI/BOOT/BOOTX64.EFI ; then
               
-              if [ -f ($root)/EFI/rEFInd/drivers_x64/UsbXbox360Dxe_.efi ]; then
-                  echo "Loading Xbox Driver from rEFInd folder..."
-                  efidriver ($root)/EFI/rEFInd/drivers_x64/UsbXbox360Dxe_.efi
+              if [ -f (\$root)/EFI/rEFInd/drivers_x64/UsbXbox360Dxe_.efi ]; then
+                  echo "[$BUILD_VER] Loading Xbox Driver from rEFInd folder..."
+                  efidriver (\$root)/EFI/rEFInd/drivers_x64/UsbXbox360Dxe_.efi
 
-              elif [ -f ($root)/EFI/BOOT/drivers/UsbXbox360Dxe.efi ]; then
-                  echo "Loading Xbox Driver from /EFI/BOOT/drivers/..."
-                  efidriver ($root)/EFI/BOOT/drivers/UsbXbox360Dxe.efi
+              elif [ -f (\$root)/EFI/rEFInd/drivers_x64/UsbXbox360Dxe.efi ]; then
+                  echo "[$BUILD_VER] Loading Xbox Driver (without underscore)..."
+                  efidriver (\$root)/EFI/rEFInd/drivers_x64/UsbXbox360Dxe.efi
+
+              elif [ -f (\$root)/EFI/BOOT/drivers/UsbXbox360Dxe.efi ]; then
+                  echo "[$BUILD_VER] Loading Xbox Driver from /EFI/BOOT/drivers/..."
+                  efidriver (\$root)/EFI/BOOT/drivers/UsbXbox360Dxe.efi
 
               else
-                  echo "Error: UsbXbox360Dxe_.efi not found in any path!"
-                  echo "Press any key to reboot, or power off the machine."
-                  read
-                  reboot
+                  echo "Warning: UsbXbox360Dxe.efi not found in primary paths!"
+                  echo "Attempting to continue without driver in 5 seconds..."
+                  sleep 5
               fi
           fi
 
           # ============================================================
-          # 2. 搜尋設定檔與備用選單
+          # 2. 搜尋 CachyOS / Linux 設定檔並載入
+          # ============================================================
+          if search --no-floppy --file --set=root /boot/grub/grub.cfg ; then
+              echo "[$BUILD_VER] Found /boot/grub/grub.cfg, loading..."
+              clear
+              configfile (\$root)/boot/grub/grub.cfg
+          elif search --no-floppy --file --set=root /EFI/cachyos/grub.cfg ; then
+              echo "[$BUILD_VER] Found /EFI/cachyos/grub.cfg, loading..."
+              clear
+              configfile (\$root)/EFI/cachyos/grub.cfg
+          elif search --no-floppy --file --set=root /EFI/BOOT/grub.cfg ; then
+              echo "[$BUILD_VER] Found /EFI/BOOT/grub.cfg, loading..."
+              clear
+              configfile (\$root)/EFI/BOOT/grub.cfg
+          else
+              echo "No .cfg file found on ext4 or FAT partitions!"
+              echo "Displaying fallback menu..."
+              set default=0
+              set timeout=10
+              menuentry "Reboot System ($BUILD_VER)" { reboot }
+              menuentry "Power Off" { halt }
+          fi
+          EOF
+
+          # ============================================================
+          # 2. 搜尋 CachyOS / Linux 設定檔並載入
           # ============================================================
           if search --no-floppy --file --set=root /boot/grub/grub.cfg ; then
               echo "Found /boot/grub/grub.cfg, loading..."
               clear
               configfile ($root)/boot/grub/grub.cfg
+          elif search --no-floppy --file --set=root /EFI/cachyos/grub.cfg ; then
+              echo "Found /EFI/cachyos/grub.cfg, loading..."
+              clear
+              configfile ($root)/EFI/cachyos/grub.cfg
           elif search --no-floppy --file --set=root /EFI/BOOT/grub.cfg ; then
               echo "Found /EFI/BOOT/grub.cfg, loading..."
               clear
               configfile ($root)/EFI/BOOT/grub.cfg
           else
-              echo "No .cfg file found. Displaying fallback menu..."
+              echo "No .cfg file found on ext4 or FAT partitions!"
+              echo "Displaying fallback menu..."
               set default=0
               set timeout=10
               menuentry "Reboot System" { reboot }
@@ -370,7 +414,7 @@ jobs:
 
 
       # ============================================================
-      # 11. 建立 BOOTX64.EFI
+      # 11. 建立 BOOTX64.EFI (包含 ext2/btrfs/xfs 檔案系統支援)
       # ============================================================
       - name: Build GRUB EFI
         run: |
@@ -386,7 +430,7 @@ jobs:
             -d "$MODULE_DIR" \
             -O x86_64-efi \
             -o "$OUTPUT" \
-            --modules="part_gpt part_msdos fat normal configfile echo search search_fs_uuid search_fs_file" \
+            --modules="part_gpt part_msdos fat ext2 btrfs xfs normal configfile echo search search_fs_uuid search_fs_file sleep" \
             "boot/grub/grub.cfg=$GITHUB_WORKSPACE/early.cfg"
 
 
