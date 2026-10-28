@@ -320,22 +320,21 @@ jobs:
 
 
       # ============================================================
-      # 10. 建立 Embedded Early GRUB Config (注入時間版本號)
+      # 10. 建立 Embedded Early GRUB Config (使用 sed 注入版本號)
       # ============================================================
       - name: Create Embedded Early GRUB Config
         run: |
-          # 1. 取得 UTC+8 (台灣/台北時間) 並格式化為 ver.YYYY.MMDD.HHMM
-          # 若想使用 UTC 時間，可改為 date -u
+          # 1. 取得台北時間作為版本號
           BUILD_VER=$(TZ='Asia/Taipei' date +"ver.%Y.%m%d.%H%M")
           echo "BUILD_VER=$BUILD_VER" >> $GITHUB_ENV
 
-          # 2. 生成 early.cfg 並把 VERSION 寫入變數與開機訊息中
-          cat << EOF > early.cfg
+          # 2. 建立 early.cfg (使用 'EOF' 避免 Bash 解析 $ 符號)
+          cat << 'EOF' > early.cfg
           set prefix=(memdisk)/boot/grub
-          set build_version="$BUILD_VER"
+          set build_version="__BUILD_VER__"
 
           echo "=================================================="
-          echo " Custom GRUB EFI ($BUILD_VER)"
+          echo " Custom GRUB EFI (__BUILD_VER__)"
           echo "=================================================="
 
           # ============================================================
@@ -343,17 +342,17 @@ jobs:
           # ============================================================
           if search --no-floppy --file --set=root /EFI/BOOT/BOOTX64.EFI ; then
               
-              if [ -f (\$root)/EFI/rEFInd/drivers_x64/UsbXbox360Dxe_.efi ]; then
-                  echo "[$BUILD_VER] Loading Xbox Driver from rEFInd folder..."
-                  efidriver (\$root)/EFI/rEFInd/drivers_x64/UsbXbox360Dxe_.efi
+              if [ -f ($root)/EFI/rEFInd/drivers_x64/UsbXbox360Dxe_.efi ]; then
+                  echo "[__BUILD_VER__] Loading Xbox Driver from rEFInd folder..."
+                  efidriver ($root)/EFI/rEFInd/drivers_x64/UsbXbox360Dxe_.efi
 
-              elif [ -f (\$root)/EFI/rEFInd/drivers_x64/UsbXbox360Dxe.efi ]; then
-                  echo "[$BUILD_VER] Loading Xbox Driver (without underscore)..."
-                  efidriver (\$root)/EFI/rEFInd/drivers_x64/UsbXbox360Dxe.efi
+              elif [ -f ($root)/EFI/rEFInd/drivers_x64/UsbXbox360Dxe.efi ]; then
+                  echo "[__BUILD_VER__] Loading Xbox Driver (without underscore)..."
+                  efidriver ($root)/EFI/rEFInd/drivers_x64/UsbXbox360Dxe.efi
 
-              elif [ -f (\$root)/EFI/BOOT/drivers/UsbXbox360Dxe.efi ]; then
-                  echo "[$BUILD_VER] Loading Xbox Driver from /EFI/BOOT/drivers/..."
-                  efidriver (\$root)/EFI/BOOT/drivers/UsbXbox360Dxe.efi
+              elif [ -f ($root)/EFI/BOOT/drivers/UsbXbox360Dxe.efi ]; then
+                  echo "[__BUILD_VER__] Loading Xbox Driver from /EFI/BOOT/drivers/..."
+                  efidriver ($root)/EFI/BOOT/drivers/UsbXbox360Dxe.efi
 
               else
                   echo "Warning: UsbXbox360Dxe.efi not found in primary paths!"
@@ -366,40 +365,15 @@ jobs:
           # 2. 搜尋 CachyOS / Linux 設定檔並載入
           # ============================================================
           if search --no-floppy --file --set=root /boot/grub/grub.cfg ; then
-              echo "[$BUILD_VER] Found /boot/grub/grub.cfg, loading..."
-              clear
-              configfile (\$root)/boot/grub/grub.cfg
-          elif search --no-floppy --file --set=root /EFI/cachyos/grub.cfg ; then
-              echo "[$BUILD_VER] Found /EFI/cachyos/grub.cfg, loading..."
-              clear
-              configfile (\$root)/EFI/cachyos/grub.cfg
-          elif search --no-floppy --file --set=root /EFI/BOOT/grub.cfg ; then
-              echo "[$BUILD_VER] Found /EFI/BOOT/grub.cfg, loading..."
-              clear
-              configfile (\$root)/EFI/BOOT/grub.cfg
-          else
-              echo "No .cfg file found on ext4 or FAT partitions!"
-              echo "Displaying fallback menu..."
-              set default=0
-              set timeout=10
-              menuentry "Reboot System ($BUILD_VER)" { reboot }
-              menuentry "Power Off" { halt }
-          fi
-          EOF
-
-          # ============================================================
-          # 2. 搜尋 CachyOS / Linux 設定檔並載入
-          # ============================================================
-          if search --no-floppy --file --set=root /boot/grub/grub.cfg ; then
-              echo "Found /boot/grub/grub.cfg, loading..."
+              echo "[__BUILD_VER__] Found /boot/grub/grub.cfg, loading..."
               clear
               configfile ($root)/boot/grub/grub.cfg
           elif search --no-floppy --file --set=root /EFI/cachyos/grub.cfg ; then
-              echo "Found /EFI/cachyos/grub.cfg, loading..."
+              echo "[__BUILD_VER__] Found /EFI/cachyos/grub.cfg, loading..."
               clear
               configfile ($root)/EFI/cachyos/grub.cfg
           elif search --no-floppy --file --set=root /EFI/BOOT/grub.cfg ; then
-              echo "Found /EFI/BOOT/grub.cfg, loading..."
+              echo "[__BUILD_VER__] Found /EFI/BOOT/grub.cfg, loading..."
               clear
               configfile ($root)/EFI/BOOT/grub.cfg
           else
@@ -407,10 +381,13 @@ jobs:
               echo "Displaying fallback menu..."
               set default=0
               set timeout=10
-              menuentry "Reboot System" { reboot }
+              menuentry "Reboot System (__BUILD_VER__)" { reboot }
               menuentry "Power Off" { halt }
           fi
           EOF
+
+          # 3. 將預留位置 __BUILD_VER__ 替換為實際的時間版本號
+          sed -i "s/__BUILD_VER__/$BUILD_VER/g" early.cfg
 
 
       # ============================================================
