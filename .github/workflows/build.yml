@@ -414,7 +414,7 @@ jobs:
 
 
       # ============================================================
-      # 12. 上傳 Artifact (同時包含 BOOTX64.EFI 與 chain.mod)
+      # 12. 上傳 Artifact (已加入 overwrite: true 避免 409 衝突)
       # ============================================================
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -423,6 +423,8 @@ jobs:
           path: |
             output/*
             output-mod/*
+          overwrite: true
+          
       # ============================================================
       # 12. 上傳 Artifact (同時包含 BOOTX64.EFI 與 efidriver.mod)
       # ============================================================
