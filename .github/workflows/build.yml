@@ -379,9 +379,9 @@ jobs:
 
 
       # ============================================================
-      # 11. 建立 BOOTX64.EFI 與收集獨立 efidriver.mod (修正路徑)
+      # 11. 建立 BOOTX64.EFI 與收集獨立 chain.mod (已修正)
       # ============================================================
-      - name: Build GRUB EFI and Collect efidriver.mod
+      - name: Build GRUB EFI and Collect chain.mod
         run: |
           PREFIX="$GITHUB_WORKSPACE/grub-install"
           MODULE_DIR="$PREFIX/lib/grub/x86_64-efi"
@@ -392,7 +392,7 @@ jobs:
           mkdir -p "$OUTPUT_DIR"
           mkdir -p "$OUTPUT_MOD_DIR"
 
-          # 修正 1：建立缺少的 locale 資料夾以消除 grub-mkstandalone 警告
+          # 建立缺少的 locale 資料夾以消除 grub-mkstandalone 警告
           mkdir -p "$PREFIX/share/locale"
 
           # 打包獨立的 BOOTX64.EFI
@@ -403,14 +403,26 @@ jobs:
             --modules="part_gpt part_msdos fat ext2 btrfs xfs normal configfile echo search search_fs_uuid search_fs_file sleep" \
             "boot/grub/grub.cfg=$GITHUB_WORKSPACE/early.cfg"
 
-          # 修正 2：從已經 make install 好的 MODULE_DIR 抓取 efidriver.mod
-          if [ -f "$MODULE_DIR/efidriver.mod" ]; then
-              cp "$MODULE_DIR/efidriver.mod" "$OUTPUT_MOD_DIR/"
-              echo "Successfully collected efidriver.mod from install directory."
+          # 從安裝目錄複製編譯好的 chain.mod 供模組化方案使用
+          if [ -f "$MODULE_DIR/chain.mod" ]; then
+              cp "$MODULE_DIR/chain.mod" "$OUTPUT_MOD_DIR/"
+              echo "Successfully collected chain.mod from install directory."
           else
-              echo "Error: efidriver.mod not found in $MODULE_DIR"
+              echo "Error: chain.mod not found in $MODULE_DIR"
               exit 1
           fi
+
+
+      # ============================================================
+      # 12. 上傳 Artifact (同時包含 BOOTX64.EFI 與 chain.mod)
+      # ============================================================
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: GRUB-efidriver-${{ github.sha }}
+          path: |
+            output/*
+            output-mod/*
       # ============================================================
       # 12. 上傳 Artifact (同時包含 BOOTX64.EFI 與 efidriver.mod)
       # ============================================================
