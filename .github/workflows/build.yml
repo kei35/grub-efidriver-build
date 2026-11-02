@@ -340,25 +340,23 @@ jobs:
           # ============================================================
           # 1. 載入 Xbox 控制器 EFI 驅動程式 (常駐記憶體)
           # ============================================================
-          if search --no-floppy --file --set=root /EFI/BOOT/BOOTX64.EFI ; then
-              
-              if [ -f ($root)/EFI/rEFInd/drivers_x64/UsbXbox360Dxe_.efi ]; then
-                  echo "[__BUILD_VER__] Loading Xbox Driver from rEFInd folder..."
-                  efidriver ($root)/EFI/rEFInd/drivers_x64/UsbXbox360Dxe_.efi
-
-              elif [ -f ($root)/EFI/rEFInd/drivers_x64/UsbXbox360Dxe.efi ]; then
-                  echo "[__BUILD_VER__] Loading Xbox Driver (without underscore)..."
-                  efidriver ($root)/EFI/rEFInd/drivers_x64/UsbXbox360Dxe.efi
-
-              elif [ -f ($root)/EFI/BOOT/drivers/UsbXbox360Dxe.efi ]; then
-                  echo "[__BUILD_VER__] Loading Xbox Driver from /EFI/BOOT/drivers/..."
-                  efidriver ($root)/EFI/BOOT/drivers/UsbXbox360Dxe.efi
-
-              else
-                  echo "Warning: UsbXbox360Dxe.efi not found in primary paths!"
-                  echo "Attempting to continue without driver in 5 seconds..."
-                  sleep 5
-              fi
+          # 改為搜尋具體的驅動檔案路徑，避免命中自身 BOOTX64.EFI 造成無窮迴圈
+          if search --no-floppy --file --set=driver_root /EFI/rEFInd/drivers_x64/UsbXbox360Dxe.efi ; then
+              echo "[__BUILD_VER__] Loading Xbox Driver from rEFInd folder..."
+              efidriver ($driver_root)/EFI/rEFInd/drivers_x64/UsbXbox360Dxe.efi
+              sleep 2
+          elif search --no-floppy --file --set=driver_root /EFI/rEFInd/drivers_x64/UsbXbox360Dxe_.efi ; then
+              echo "[__BUILD_VER__] Loading Xbox Driver (with underscore)..."
+              efidriver ($driver_root)/EFI/rEFInd/drivers_x64/UsbXbox360Dxe_.efi
+              sleep 2
+          elif search --no-floppy --file --set=driver_root /EFI/BOOT/drivers/UsbXbox360Dxe.efi ; then
+              echo "[__BUILD_VER__] Loading Xbox Driver from /EFI/BOOT/drivers/..."
+              efidriver ($driver_root)/EFI/BOOT/drivers/UsbXbox360Dxe.efi
+              sleep 2
+          else
+              echo "Warning: UsbXbox360Dxe.efi not found in primary paths!"
+              echo "Attempting to continue without driver in 3 seconds..."
+              sleep 3
           fi
 
           # ============================================================
@@ -380,7 +378,7 @@ jobs:
               echo "No .cfg file found on ext4 or FAT partitions!"
               echo "Displaying fallback menu..."
               set default=0
-              set timeout=10
+              set timeout=-1
               menuentry "Reboot System (__BUILD_VER__)" { reboot }
               menuentry "Power Off" { halt }
           fi
