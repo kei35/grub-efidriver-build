@@ -379,7 +379,7 @@ jobs:
 
 
       # ============================================================
-      # 11. 建立 BOOTX64.EFI 與收集獨立 efidriver.mod
+      # 11. 建立 BOOTX64.EFI 與收集獨立 efidriver.mod (修正路徑)
       # ============================================================
       - name: Build GRUB EFI and Collect efidriver.mod
         run: |
@@ -392,6 +392,9 @@ jobs:
           mkdir -p "$OUTPUT_DIR"
           mkdir -p "$OUTPUT_MOD_DIR"
 
+          # 修正 1：建立缺少的 locale 資料夾以消除 grub-mkstandalone 警告
+          mkdir -p "$PREFIX/share/locale"
+
           # 打包獨立的 BOOTX64.EFI
           "$MKSTANDALONE" \
             -d "$MODULE_DIR" \
@@ -400,10 +403,14 @@ jobs:
             --modules="part_gpt part_msdos fat ext2 btrfs xfs normal configfile echo search search_fs_uuid search_fs_file sleep" \
             "boot/grub/grub.cfg=$GITHUB_WORKSPACE/early.cfg"
 
-          # 複製編譯出來的獨立 efidriver.mod 供模組化方案使用
-          cp "$GITHUB_WORKSPACE/grub/build/grub-core/efidriver.mod" "$OUTPUT_MOD_DIR/"
-
-
+          # 修正 2：從已經 make install 好的 MODULE_DIR 抓取 efidriver.mod
+          if [ -f "$MODULE_DIR/efidriver.mod" ]; then
+              cp "$MODULE_DIR/efidriver.mod" "$OUTPUT_MOD_DIR/"
+              echo "Successfully collected efidriver.mod from install directory."
+          else
+              echo "Error: efidriver.mod not found in $MODULE_DIR"
+              exit 1
+          fi
       # ============================================================
       # 12. 上傳 Artifact (同時包含 BOOTX64.EFI 與 efidriver.mod)
       # ============================================================
