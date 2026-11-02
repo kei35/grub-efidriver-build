@@ -324,11 +324,9 @@ jobs:
       # ============================================================
       - name: Create Embedded Early GRUB Config
         run: |
-          # 1. 取得台北時間作為版本號
           BUILD_VER=$(TZ='Asia/Taipei' date +"ver.%Y.%m%d.%H%M")
           echo "BUILD_VER=$BUILD_VER" >> $GITHUB_ENV
 
-          # 2. 建立 early.cfg (使用 'EOF' 避免 Bash 解析 $ 符號)
           cat << 'EOF' > early.cfg
           set prefix=(memdisk)/boot/grub
           set build_version="__BUILD_VER__"
@@ -337,10 +335,6 @@ jobs:
           echo " Custom GRUB EFI (__BUILD_VER__)"
           echo "=================================================="
 
-          # ============================================================
-          # 1. 載入 Xbox 控制器 EFI 驅動程式 (常駐記憶體)
-          # ============================================================
-          # 改為搜尋具體的驅動檔案路徑，避免命中自身 BOOTX64.EFI 造成無窮迴圈
           if search --no-floppy --file --set=driver_root /EFI/rEFInd/drivers_x64/UsbXbox360Dxe.efi ; then
               echo "[__BUILD_VER__] Loading Xbox Driver from rEFInd folder..."
               efidriver ($driver_root)/EFI/rEFInd/drivers_x64/UsbXbox360Dxe.efi
@@ -359,9 +353,6 @@ jobs:
               sleep 3
           fi
 
-          # ============================================================
-          # 2. 搜尋 CachyOS / Linux 設定檔並載入
-          # ============================================================
           if search --no-floppy --file --set=root /boot/grub/grub.cfg ; then
               echo "[__BUILD_VER__] Found /boot/grub/grub.cfg, loading..."
               clear
@@ -384,39 +375,45 @@ jobs:
           fi
           EOF
 
-          # 3. 將預留位置 __BUILD_VER__ 替換為實際的時間版本號
           sed -i "s/__BUILD_VER__/$BUILD_VER/g" early.cfg
 
 
       # ============================================================
-      # 11. 建立 BOOTX64.EFI (包含 ext2/btrfs/xfs 檔案系統支援)
+      # 11. 建立 BOOTX64.EFI 與收集獨立 efidriver.mod
       # ============================================================
-      - name: Build GRUB EFI
+      - name: Build GRUB EFI and Collect efidriver.mod
         run: |
           PREFIX="$GITHUB_WORKSPACE/grub-install"
           MODULE_DIR="$PREFIX/lib/grub/x86_64-efi"
           MKSTANDALONE="$PREFIX/bin/grub-mkstandalone"
           OUTPUT_DIR="$GITHUB_WORKSPACE/output"
-          OUTPUT="$OUTPUT_DIR/BOOTX64.EFI"
+          OUTPUT_MOD_DIR="$GITHUB_WORKSPACE/output-mod"
 
           mkdir -p "$OUTPUT_DIR"
+          mkdir -p "$OUTPUT_MOD_DIR"
 
+          # 打包獨立的 BOOTX64.EFI
           "$MKSTANDALONE" \
             -d "$MODULE_DIR" \
             -O x86_64-efi \
-            -o "$OUTPUT" \
+            -o "$OUTPUT_DIR/BOOTX64.EFI" \
             --modules="part_gpt part_msdos fat ext2 btrfs xfs normal configfile echo search search_fs_uuid search_fs_file sleep" \
             "boot/grub/grub.cfg=$GITHUB_WORKSPACE/early.cfg"
 
+          # 複製編譯出來的獨立 efidriver.mod 供模組化方案使用
+          cp "$GITHUB_WORKSPACE/grub/build/grub-core/efidriver.mod" "$OUTPUT_MOD_DIR/"
+
 
       # ============================================================
-      # 12. 上傳 Artifact
+      # 12. 上傳 Artifact (同時包含 BOOTX64.EFI 與 efidriver.mod)
       # ============================================================
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: GRUB-efidriver-${{ github.sha }}
-          path: output/*
+          path: |
+            output/*
+            output-mod/*
 
 
       # ============================================================
@@ -425,7 +422,7 @@ jobs:
       - name: Package output into 7z
         run: |
           apt-get update && apt-get install -y p7zip-full
-          7z a output/GRUB-efidriver-${{ github.ref_name }}.7z output/*
+          7z a output/GRUB-efidriver-${{ github.ref_name }}.7z output/* output-mod/*
 
 
       # ============================================================
